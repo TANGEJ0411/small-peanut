@@ -9,6 +9,7 @@ import BreastMilkPage from './pages/BreastMilkPage'
 import SleepPage from './pages/SleepPage'
 import GrowthPage from './pages/GrowthPage'
 import StatusTagPage from './pages/StatusTagPage'
+import FeedingPage from './pages/FeedingPage'
 import AnalysisPage from './pages/AnalysisPage'
 import HealthPage from './pages/HealthPage'
 import SettingsPage from './pages/SettingsPage'
@@ -22,6 +23,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/records" element={<RecordsPage />} />
+            <Route path="/records/feeding" element={<FeedingPage />} />
             <Route path="/records/breast-milk" element={<BreastMilkPage />} />
             <Route path="/records/sleep" element={<SleepPage />} />
             <Route path="/records/diapers" element={<DiaperPage />} />

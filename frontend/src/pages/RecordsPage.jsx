@@ -2,6 +2,14 @@ import { useNavigate } from 'react-router-dom'
 
 const RECORD_TYPES = [
   {
+    path: '/records/feeding',
+    label: '餵食紀錄',
+    desc: '親餵・瓶餵・配方奶',
+    bg: 'bg-orange-50 dark:bg-orange-950',
+    iconBg: 'bg-orange-100 dark:bg-orange-900',
+    icon: '🥛',
+  },
+  {
     path: '/records/breast-milk',
     label: '母乳紀錄',
     desc: '親餵・擠奶・庫存',

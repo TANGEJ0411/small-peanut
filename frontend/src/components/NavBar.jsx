@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useDarkMode } from '../context/DarkModeContext'
 
 const SUB_PAGE_TITLES = {
+  '/records/feeding': '餵食紀錄',
   '/records/breast-milk': '母乳紀錄',
   '/records/sleep': '睡眠紀錄',
   '/records/diapers': '換尿布',
