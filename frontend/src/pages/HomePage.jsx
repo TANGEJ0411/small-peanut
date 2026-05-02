@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { timeAgo, formatDuration, todayString } from '../utils/dateUtils'
 
 const DIAPER_LABELS = { CLEAN: '乾淨', URINE: '尿尿', STOOL: '便便' }
+const FEEDING_LABELS = { BREASTFEED: '親餵母乳', BOTTLE_BREAST_MILK: '瓶餵母乳', FORMULA: '配方奶' }
 
 function SummaryCard({ icon, label, primary, secondary, onClick, highlight }) {
   return (
@@ -63,8 +64,19 @@ export default function HomePage() {
 
   const activeSleep = dashboard?.activeSleep
   const lastDiaper = dashboard?.lastDiaper
-  const lastPumping = dashboard?.lastPumping
+  const lastFeeding = dashboard?.lastFeeding
   const todaySleep = dashboard?.todaySleepMinutes ?? 0
+
+  function nextFeedingLabel() {
+    if (!lastFeeding) return '尚無紀錄'
+    const diff = new Date(lastFeeding.nextFeedingAt) - Date.now()
+    if (diff <= 0) return '已到餵奶時間'
+    const mins = Math.floor(diff / 60000)
+    if (mins < 60) return `${mins} 分鐘後`
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return m > 0 ? `${h} 小時 ${m} 分後` : `${h} 小時後`
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -98,11 +110,11 @@ export default function HomePage() {
 
           <div className="grid grid-cols-2 gap-3">
             <SummaryCard
-              icon="🍼"
-              label="上次擠奶"
-              primary={lastPumping ? timeAgo(lastPumping.pumpedAt) : '尚無紀錄'}
-              secondary={lastPumping?.totalAmount > 0 ? `${lastPumping.totalAmount} ml` : null}
-              onClick={() => navigate('/records/breast-milk')}
+              icon="🥛"
+              label="上次餵食"
+              primary={lastFeeding ? timeAgo(lastFeeding.startedAt) : '尚無紀錄'}
+              secondary={lastFeeding ? FEEDING_LABELS[lastFeeding.feedingType] : null}
+              onClick={() => navigate('/records/feeding')}
             />
             <SummaryCard
               icon="👶"
@@ -119,10 +131,12 @@ export default function HomePage() {
               onClick={() => navigate('/records/sleep')}
             />
             <SummaryCard
-              icon="📋"
-              label="所有紀錄"
-              primary="查看紀錄"
-              onClick={() => navigate('/records')}
+              icon="⏰"
+              label="預計下次餵奶"
+              primary={nextFeedingLabel()}
+              secondary={lastFeeding ? `上次 ${timeAgo(lastFeeding.startedAt)}` : null}
+              highlight={lastFeeding && new Date(lastFeeding.nextFeedingAt) <= Date.now()}
+              onClick={() => navigate('/records/feeding')}
             />
           </div>
 

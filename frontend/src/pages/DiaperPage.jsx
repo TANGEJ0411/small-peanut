@@ -74,14 +74,14 @@ export default function DiaperPage() {
 
   return (
     <>
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">排泄紀錄</h2>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">換尿布紀錄</h2>
 
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : records.length === 0 ? (
-        <EmptyState message="還沒有排泄紀錄，點擊右下角 + 新增" />
+        <EmptyState message="還沒有換尿布紀錄，點擊右下角 + 新增" />
       ) : (
         <RecordList
           records={records}

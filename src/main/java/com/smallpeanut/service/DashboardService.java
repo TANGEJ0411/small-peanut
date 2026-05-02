@@ -1,11 +1,9 @@
 package com.smallpeanut.service;
 
 import com.smallpeanut.dto.DashboardResponse;
-import com.smallpeanut.model.DiaperRecord;
-import com.smallpeanut.model.PumpingRecord;
 import com.smallpeanut.model.SleepRecord;
 import com.smallpeanut.repository.DiaperRecordRepository;
-import com.smallpeanut.repository.PumpingRecordRepository;
+import com.smallpeanut.repository.FeedingRecordRepository;
 import com.smallpeanut.repository.SleepRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,14 +17,16 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DashboardService {
 
+    private static final int NEXT_FEEDING_INTERVAL_HOURS = 3;
+
     private final DiaperRecordRepository diaperRepository;
-    private final PumpingRecordRepository pumpingRepository;
+    private final FeedingRecordRepository feedingRepository;
     private final SleepRecordRepository sleepRepository;
 
     public DashboardResponse getSummary() {
         return new DashboardResponse(
                 buildLastDiaper(),
-                buildLastPumping(),
+                buildLastFeeding(),
                 buildTodaySleepMinutes(),
                 buildActiveSleep()
         );
@@ -41,15 +41,18 @@ public class DashboardService {
                 .orElse(null);
     }
 
-    private DashboardResponse.LastPumping buildLastPumping() {
-        return pumpingRepository.findAllByOrderByPumpedAtDesc().stream()
+    private DashboardResponse.LastFeeding buildLastFeeding() {
+        return feedingRepository.findAllByOrderByStartedAtDesc().stream()
                 .findFirst()
                 .map(r -> {
-                    int total = (r.getLeftAmount() != null ? r.getLeftAmount() : 0)
-                              + (r.getRightAmount() != null ? r.getRightAmount() : 0);
-                    return new DashboardResponse.LastPumping(
-                            total,
-                            r.getPumpedAt().toInstant(ZoneOffset.UTC));
+                    var startedAt = r.getStartedAt().toInstant(ZoneOffset.UTC);
+                    var nextFeedingAt = r.getStartedAt()
+                            .plusHours(NEXT_FEEDING_INTERVAL_HOURS)
+                            .toInstant(ZoneOffset.UTC);
+                    return new DashboardResponse.LastFeeding(
+                            r.getFeedingType().name(),
+                            startedAt,
+                            nextFeedingAt);
                 })
                 .orElse(null);
     }
