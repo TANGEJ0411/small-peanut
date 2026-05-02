@@ -1,5 +1,5 @@
 package com.smallpeanut.model;
 
 public enum StorageType {
-    FRIDGE, FREEZER
+    ROOM_TEMP, FRIDGE, FREEZER
 }

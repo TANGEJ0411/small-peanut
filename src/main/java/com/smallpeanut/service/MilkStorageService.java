@@ -40,8 +40,9 @@ public class MilkStorageService {
 
     private LocalDateTime calculateExpiry(LocalDateTime storedAt, StorageType type) {
         return switch (type) {
-            case FRIDGE -> storedAt.plusDays(4);
-            case FREEZER -> storedAt.plusDays(90);
+            case ROOM_TEMP -> storedAt.plusHours(3);
+            case FRIDGE    -> storedAt.plusDays(3);
+            case FREEZER   -> storedAt.plusMonths(3);
         };
     }
 

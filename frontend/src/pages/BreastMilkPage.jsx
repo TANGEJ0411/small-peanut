@@ -9,15 +9,34 @@ import FAB from '../components/FAB'
 import DateNavigator from '../components/DateNavigator'
 import { nowLocalString, formatTime, formatDate, localDayRange } from '../utils/dateUtils'
 
+function batchNo(id) {
+  return `#${String(id).padStart(3, '0')}`
+}
+
+function expiryText(record) {
+  return record.storageType === 'ROOM_TEMP'
+    ? `${formatDate(record.expiresAt)} ${formatTime(record.expiresAt)}`
+    : formatDate(record.expiresAt)
+}
+
+function expiringSoonThreshold(storageType) {
+  if (storageType === 'ROOM_TEMP') return 30 * 60 * 1000          // 30 min
+  if (storageType === 'FRIDGE')    return 12 * 60 * 60 * 1000     // 12 hours
+  return 7 * 24 * 60 * 60 * 1000                                  // 7 days (FREEZER)
+}
+
 const TAB_OPTIONS = [
   { value: 'pumping', label: '擠奶紀錄' },
   { value: 'storage', label: '母乳庫存' },
 ]
 
 const STORAGE_OPTIONS = [
+  { value: 'ROOM_TEMP', label: '常溫' },
   { value: 'FRIDGE', label: '冷藏' },
   { value: 'FREEZER', label: '冷凍' },
 ]
+
+const STORAGE_LABEL = { ROOM_TEMP: '常溫', FRIDGE: '冷藏', FREEZER: '冷凍' }
 
 function makeDefaultPumpingForm() {
   return { leftDuration: '', rightDuration: '', leftAmount: '', rightAmount: '', note: '', pumpedAt: nowLocalString() }
@@ -57,9 +76,9 @@ function isExpired(expiresAt) {
   return new Date(expiresAt) < new Date()
 }
 
-function isExpiringSoon(expiresAt) {
+function isExpiringSoon(expiresAt, storageType) {
   const diff = new Date(expiresAt) - new Date()
-  return diff > 0 && diff < 48 * 60 * 60 * 1000
+  return diff > 0 && diff < expiringSoonThreshold(storageType)
 }
 
 export default function BreastMilkPage() {
@@ -198,7 +217,7 @@ export default function BreastMilkPage() {
           <div className="flex flex-col gap-2">
             {storageRecords.map(record => {
               const expired = isExpired(record.expiresAt)
-              const expiringSoon = !expired && isExpiringSoon(record.expiresAt)
+              const expiringSoon = !expired && isExpiringSoon(record.expiresAt, record.storageType)
               return (
                 <div
                   key={record.id}
@@ -211,12 +230,17 @@ export default function BreastMilkPage() {
                   }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 dark:text-white text-sm">
-                      {record.amount} ml・{record.storageType === 'FRIDGE' ? '冷藏' : '冷凍'}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-gray-400 dark:text-gray-500 shrink-0">
+                        {batchNo(record.id)}
+                      </span>
+                      <p className="font-medium text-gray-900 dark:text-white text-sm">
+                        {record.amount} ml・{STORAGE_LABEL[record.storageType] ?? record.storageType}
+                      </p>
+                    </div>
                     <p className={`text-xs mt-0.5 ${expired ? 'text-red-500' : expiringSoon ? 'text-yellow-500 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}`}>
                       {expired ? '已過期・' : expiringSoon ? '即將到期・' : ''}
-                      到期：{formatDate(record.expiresAt)}
+                      到期：{expiryText(record)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
