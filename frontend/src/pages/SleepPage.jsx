@@ -3,7 +3,7 @@ import RecordFormModal from '../components/RecordFormModal'
 import TimeInput from '../components/TimeInput'
 import EmptyState from '../components/EmptyState'
 import FAB from '../components/FAB'
-import { nowLocalString, formatTime } from '../utils/dateUtils'
+import { nowLocalString, formatTime, formatDuration } from '../utils/dateUtils'
 
 const LOCATION_OPTIONS = ['嬰兒床', '大床', '推車', '揹巾']
 
@@ -18,13 +18,8 @@ function makeWakeForm() {
 const inputClass =
   'block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
 
-function formatDuration(minutes) {
-  if (minutes == null) return null
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m} 分鐘`
-  if (m === 0) return `${h} 小時`
-  return `${h} 小時 ${m} 分`
+function elapsedMinutes(fellAsleepAt) {
+  return Math.floor((Date.now() - new Date(fellAsleepAt)) / 60000)
 }
 
 export default function SleepPage() {
@@ -35,6 +30,7 @@ export default function SleepPage() {
   const [form, setForm] = useState(makeDefaultForm)
   const [wakeForm, setWakeForm] = useState(makeWakeForm)
   const [submitting, setSubmitting] = useState(false)
+  const [tick, setTick] = useState(0)
 
   const fetchRecords = useCallback(async () => {
     try {
@@ -46,6 +42,13 @@ export default function SleepPage() {
   }, [])
 
   useEffect(() => { fetchRecords() }, [fetchRecords])
+
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60000)
+    return () => clearInterval(id)
+  }, [])
+
+  const activeSleep = records.find(r => r.wokeUpAt == null)
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -93,9 +96,9 @@ export default function SleepPage() {
     setAddModalOpen(true)
   }
 
-  function openWake(record) {
+  function openWake(id) {
     setWakeForm(makeWakeForm())
-    setWakeModalId(record.id)
+    setWakeModalId(id)
   }
 
   return (
@@ -106,59 +109,67 @@ export default function SleepPage() {
         <div className="flex justify-center py-20">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : records.length === 0 ? (
-        <EmptyState message="還沒有睡眠紀錄，點擊右下角 + 新增" />
       ) : (
-        <div className="flex flex-col gap-2">
-          {records.map(record => {
-            const sleeping = record.wokeUpAt == null
-            const duration = formatDuration(record.durationMinutes)
-            return (
-              <div
-                key={record.id}
-                className={`flex items-center gap-3 bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border ${
-                  sleeping ? 'border-blue-200 dark:border-blue-700' : 'border-gray-100 dark:border-gray-700'
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-gray-900 dark:text-white text-sm">
-                      {sleeping ? '睡眠中' : duration}
-                    </p>
-                    {sleeping && (
-                      <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded-full">
-                        進行中
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    入睡 {formatTime(record.fellAsleepAt)}
-                    {record.wokeUpAt ? `・醒來 ${formatTime(record.wokeUpAt)}` : ''}
-                    {record.location ? `・${record.location}` : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {sleeping && (
-                    <button
-                      onClick={() => openWake(record)}
-                      className="min-w-[44px] min-h-[44px] flex items-center justify-center text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300 transition-colors rounded-lg text-xs font-medium"
-                      aria-label="記錄醒來時間"
-                    >
-                      醒了
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleDelete(record.id)}
-                    className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors rounded-lg"
-                    aria-label="刪除"
-                  >
-                    ✕
-                  </button>
-                </div>
+        <>
+          {activeSleep && (
+            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-700 rounded-2xl p-4 flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium">睡眠中</p>
+                <p className="text-lg font-bold text-blue-700 dark:text-blue-300 mt-0.5">
+                  已睡 {formatDuration(elapsedMinutes(activeSleep.fellAsleepAt))}
+                </p>
+                <p className="text-xs text-blue-400 dark:text-blue-500 mt-0.5">
+                  入睡 {formatTime(activeSleep.fellAsleepAt)}
+                  {activeSleep.location ? `・${activeSleep.location}` : ''}
+                </p>
               </div>
-            )
-          })}
-        </div>
+              <button
+                onClick={() => openWake(activeSleep.id)}
+                className="min-h-[44px] px-4 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                記錄醒來
+              </button>
+            </div>
+          )}
+
+          {records.length === 0 ? (
+            <EmptyState message="還沒有睡眠紀錄，點擊右下角 + 新增" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {records.map(record => {
+                const sleeping = record.wokeUpAt == null
+                return (
+                  <div
+                    key={record.id}
+                    className={`flex items-center gap-3 bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border ${
+                      sleeping ? 'border-blue-200 dark:border-blue-700' : 'border-gray-100 dark:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 dark:text-white text-sm">
+                        {sleeping ? '睡眠中' : formatDuration(record.durationMinutes)}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        入睡 {formatTime(record.fellAsleepAt)}
+                        {record.wokeUpAt ? `・醒來 ${formatTime(record.wokeUpAt)}` : ''}
+                        {record.location ? `・${record.location}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleDelete(record.id)}
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors rounded-lg"
+                        aria-label="刪除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <FAB onClick={openAdd} />
@@ -171,7 +182,7 @@ export default function SleepPage() {
         submitting={submitting}
       >
         <TimeInput label="入睡時間" value={form.fellAsleepAt} onChange={v => setForm(f => ({ ...f, fellAsleepAt: v }))} />
-        <TimeInput label="醒來時間（選填）" value={form.wokeUpAt} onChange={v => setForm(f => ({ ...f, wokeUpAt: v }))} />
+        <TimeInput label="醒來時間（選填，可事後補填）" value={form.wokeUpAt} onChange={v => setForm(f => ({ ...f, wokeUpAt: v }))} />
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">睡覺地點（選填）</label>
           <div className="flex flex-wrap gap-2">
