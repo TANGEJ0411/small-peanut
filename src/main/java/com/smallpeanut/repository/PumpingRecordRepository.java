@@ -8,4 +8,5 @@ import java.util.List;
 public interface PumpingRecordRepository extends JpaRepository<PumpingRecord, Long> {
     List<PumpingRecord> findAllByOrderByPumpedAtDesc();
     List<PumpingRecord> findAllByPumpedAtBetweenOrderByPumpedAtDesc(LocalDateTime from, LocalDateTime to);
+    List<PumpingRecord> findAllByStorageTypeIsNotNullOrderByPumpedAtDesc();
 }

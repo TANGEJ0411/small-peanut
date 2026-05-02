@@ -9,8 +9,38 @@ import FAB from '../components/FAB'
 import DateNavigator from '../components/DateNavigator'
 import { nowLocalString, formatTime, formatDate, localDayRange } from '../utils/dateUtils'
 
+const TAB_OPTIONS = [
+  { value: 'pumping', label: '擠奶紀錄' },
+  { value: 'storage', label: '母乳庫存' },
+]
+
+const STORAGE_OPTIONS = [
+  { value: 'ROOM_TEMP', label: '常溫' },
+  { value: 'FRIDGE',    label: '冷藏' },
+  { value: 'FREEZER',   label: '冷凍' },
+]
+
+const STORAGE_LABEL = { ROOM_TEMP: '常溫', FRIDGE: '冷藏', FREEZER: '冷凍' }
+
+const STORAGE_EXPIRY_HINT = { ROOM_TEMP: '有效 3 小時', FRIDGE: '有效 3 天', FREEZER: '有效 3 個月' }
+
 function batchNo(id) {
   return `#${String(id).padStart(3, '0')}`
+}
+
+function isExpired(expiresAt) {
+  return new Date(expiresAt) < new Date()
+}
+
+function isExpiringSoon(expiresAt, storageType) {
+  const diff = new Date(expiresAt) - new Date()
+  if (diff <= 0) return false
+  const thresholds = {
+    ROOM_TEMP: 30 * 60 * 1000,
+    FRIDGE:    12 * 60 * 60 * 1000,
+    FREEZER:   7 * 24 * 60 * 60 * 1000,
+  }
+  return diff < (thresholds[storageType] ?? 48 * 60 * 60 * 1000)
 }
 
 function expiryText(record) {
@@ -19,31 +49,8 @@ function expiryText(record) {
     : formatDate(record.expiresAt)
 }
 
-function expiringSoonThreshold(storageType) {
-  if (storageType === 'ROOM_TEMP') return 30 * 60 * 1000          // 30 min
-  if (storageType === 'FRIDGE')    return 12 * 60 * 60 * 1000     // 12 hours
-  return 7 * 24 * 60 * 60 * 1000                                  // 7 days (FREEZER)
-}
-
-const TAB_OPTIONS = [
-  { value: 'pumping', label: '擠奶紀錄' },
-  { value: 'storage', label: '母乳庫存' },
-]
-
-const STORAGE_OPTIONS = [
-  { value: 'ROOM_TEMP', label: '常溫' },
-  { value: 'FRIDGE', label: '冷藏' },
-  { value: 'FREEZER', label: '冷凍' },
-]
-
-const STORAGE_LABEL = { ROOM_TEMP: '常溫', FRIDGE: '冷藏', FREEZER: '冷凍' }
-
 function makeDefaultPumpingForm() {
-  return { leftDuration: '', rightDuration: '', leftAmount: '', rightAmount: '', note: '', pumpedAt: nowLocalString() }
-}
-
-function makeDefaultStorageForm() {
-  return { amount: '', storageType: 'FRIDGE', note: '', storedAt: nowLocalString() }
+  return { leftDuration: '', rightDuration: '', leftAmount: '', rightAmount: '', note: '', pumpedAt: nowLocalString(), storageType: '' }
 }
 
 const inputClass =
@@ -72,15 +79,6 @@ function NumberInput({ label, value, onChange, placeholder, unit }) {
   )
 }
 
-function isExpired(expiresAt) {
-  return new Date(expiresAt) < new Date()
-}
-
-function isExpiringSoon(expiresAt, storageType) {
-  const diff = new Date(expiresAt) - new Date()
-  return diff > 0 && diff < expiringSoonThreshold(storageType)
-}
-
 export default function BreastMilkPage() {
   const [tab, setTab] = useState('pumping')
   const [pumpingRecords, setPumpingRecords] = useState([])
@@ -88,9 +86,11 @@ export default function BreastMilkPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [pumpingForm, setPumpingForm] = useState(makeDefaultPumpingForm)
-  const [storageForm, setStorageForm] = useState(makeDefaultStorageForm)
   const [submitting, setSubmitting] = useState(false)
   const [selectedDate, setSelectedDate] = useState(() => new Date())
+  const [remainingRecord, setRemainingRecord] = useState(null)
+  const [remainingInput, setRemainingInput] = useState('')
+  const [remainingSubmitting, setRemainingSubmitting] = useState(false)
 
   const fetchPumping = useCallback(async (date) => {
     const { from, to } = localDayRange(date)
@@ -99,7 +99,7 @@ export default function BreastMilkPage() {
   }, [])
 
   const fetchStorage = useCallback(async () => {
-    const res = await fetch('/api/v1/milk-storage')
+    const res = await fetch('/api/v1/pumping/storage')
     if (res.ok) setStorageRecords(await res.json())
   }, [])
 
@@ -114,34 +114,19 @@ export default function BreastMilkPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          leftDuration: pumpingForm.leftDuration ? parseInt(pumpingForm.leftDuration) : null,
+          leftDuration:  pumpingForm.leftDuration  ? parseInt(pumpingForm.leftDuration)  : null,
           rightDuration: pumpingForm.rightDuration ? parseInt(pumpingForm.rightDuration) : null,
-          leftAmount: pumpingForm.leftAmount ? parseInt(pumpingForm.leftAmount) : null,
-          rightAmount: pumpingForm.rightAmount ? parseInt(pumpingForm.rightAmount) : null,
-          note: pumpingForm.note || null,
-          pumpedAt: new Date(pumpingForm.pumpedAt).toISOString(),
+          leftAmount:    pumpingForm.leftAmount    ? parseInt(pumpingForm.leftAmount)    : null,
+          rightAmount:   pumpingForm.rightAmount   ? parseInt(pumpingForm.rightAmount)   : null,
+          note:          pumpingForm.note || null,
+          pumpedAt:      new Date(pumpingForm.pumpedAt).toISOString(),
+          storageType:   pumpingForm.storageType   || null,
         }),
       })
-      if (res.ok) { await fetchPumping(selectedDate); setModalOpen(false) }
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  async function handleStorageSubmit() {
-    setSubmitting(true)
-    try {
-      const res = await fetch('/api/v1/milk-storage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: parseInt(storageForm.amount),
-          storageType: storageForm.storageType,
-          note: storageForm.note || null,
-          storedAt: new Date(storageForm.storedAt).toISOString(),
-        }),
-      })
-      if (res.ok) { await fetchStorage(); setModalOpen(false) }
+      if (res.ok) {
+        await Promise.all([fetchPumping(selectedDate), fetchStorage()])
+        setModalOpen(false)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -150,17 +135,36 @@ export default function BreastMilkPage() {
   async function handleDeletePumping(id) {
     await fetch(`/api/v1/pumping/${id}`, { method: 'DELETE' })
     setPumpingRecords(prev => prev.filter(r => r.id !== id))
-  }
-
-  async function handleDeleteStorage(id) {
-    await fetch(`/api/v1/milk-storage/${id}`, { method: 'DELETE' })
     setStorageRecords(prev => prev.filter(r => r.id !== id))
   }
 
+  async function handleRemainingSubmit() {
+    if (remainingRecord == null) return
+    setRemainingSubmitting(true)
+    try {
+      const res = await fetch(`/api/v1/pumping/${remainingRecord.id}/remaining`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remaining: parseInt(remainingInput) || 0 }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setStorageRecords(prev => prev.map(r => r.id === updated.id ? updated : r))
+        setRemainingRecord(null)
+      }
+    } finally {
+      setRemainingSubmitting(false)
+    }
+  }
+
   function openModal() {
-    if (tab === 'pumping') setPumpingForm(makeDefaultPumpingForm())
-    else setStorageForm(makeDefaultStorageForm())
+    setPumpingForm(makeDefaultPumpingForm())
     setModalOpen(true)
+  }
+
+  function openRemainingModal(record) {
+    setRemainingRecord(record)
+    setRemainingInput(String(record.remainingAmount ?? 0))
   }
 
   function pumpingTitle(r) {
@@ -170,10 +174,11 @@ export default function BreastMilkPage() {
 
   function pumpingSubtitle(r) {
     const parts = []
-    if (r.leftDuration) parts.push(`左 ${r.leftDuration} 分`)
+    if (r.leftDuration)  parts.push(`左 ${r.leftDuration} 分`)
     if (r.rightDuration) parts.push(`右 ${r.rightDuration} 分`)
-    if (r.leftAmount) parts.push(`左 ${r.leftAmount} ml`)
-    if (r.rightAmount) parts.push(`右 ${r.rightAmount} ml`)
+    if (r.leftAmount)    parts.push(`左 ${r.leftAmount} ml`)
+    if (r.rightAmount)   parts.push(`右 ${r.rightAmount} ml`)
+    if (r.storageType)   parts.push(STORAGE_LABEL[r.storageType])
     return parts.join('・')
   }
 
@@ -212,41 +217,60 @@ export default function BreastMilkPage() {
             />
           )
         ) : storageRecords.length === 0 ? (
-          <EmptyState message="還沒有母乳庫存，點擊右下角 + 新增" />
+          <EmptyState message="還沒有庫存，擠奶時選擇儲存方式即可加入" />
         ) : (
           <div className="flex flex-col gap-2">
             {storageRecords.map(record => {
               const expired = isExpired(record.expiresAt)
               const expiringSoon = !expired && isExpiringSoon(record.expiresAt, record.storageType)
+              const depleted = record.remainingAmount != null && record.remainingAmount === 0
               return (
                 <div
                   key={record.id}
                   className={`flex items-center gap-3 bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border ${
-                    expired
-                      ? 'border-red-300 dark:border-red-700'
+                    expired || depleted
+                      ? 'border-gray-200 dark:border-gray-700 opacity-50'
                       : expiringSoon
                       ? 'border-yellow-300 dark:border-yellow-600'
                       : 'border-gray-100 dark:border-gray-700'
                   }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-mono text-gray-400 dark:text-gray-500 shrink-0">
                         {batchNo(record.id)}
                       </span>
                       <p className="font-medium text-gray-900 dark:text-white text-sm">
-                        {record.amount} ml・{STORAGE_LABEL[record.storageType] ?? record.storageType}
+                        {record.remainingAmount != null
+                          ? `剩 ${record.remainingAmount} ml`
+                          : record.totalAmount > 0 ? `${record.totalAmount} ml` : '—'}
+                        ・{STORAGE_LABEL[record.storageType]}
                       </p>
+                      {depleted && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">（已用完）</span>
+                      )}
                     </div>
-                    <p className={`text-xs mt-0.5 ${expired ? 'text-red-500' : expiringSoon ? 'text-yellow-500 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <p className={`text-xs mt-0.5 ${
+                      expired    ? 'text-red-500' :
+                      expiringSoon ? 'text-yellow-500 dark:text-yellow-400' :
+                                   'text-gray-500 dark:text-gray-400'
+                    }`}>
                       {expired ? '已過期・' : expiringSoon ? '即將到期・' : ''}
                       到期：{expiryText(record)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{formatTime(record.storedAt)}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{formatTime(record.pumpedAt)}</span>
+                    {!depleted && (
+                      <button
+                        onClick={() => openRemainingModal(record)}
+                        className="min-h-[44px] px-3 text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 transition-colors rounded-lg"
+                      >
+                        更新
+                      </button>
+                    )}
                     <button
-                      onClick={() => handleDeleteStorage(record.id)}
+                      onClick={() => handleDeletePumping(record.id)}
                       className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors rounded-lg"
                       aria-label="刪除"
                     >
@@ -260,10 +284,11 @@ export default function BreastMilkPage() {
         )}
       </div>
 
-      <FAB onClick={openModal} />
+      {tab === 'pumping' && <FAB onClick={openModal} />}
 
+      {/* 擠奶紀錄表單 */}
       <RecordFormModal
-        open={modalOpen && tab === 'pumping'}
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="新增擠奶紀錄"
         onSubmit={handlePumpingSubmit}
@@ -299,6 +324,30 @@ export default function BreastMilkPage() {
             unit="ml"
           />
         </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">儲存方式（選填）</label>
+          <div className="flex gap-2 flex-wrap">
+            {STORAGE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setPumpingForm(f => ({ ...f, storageType: f.storageType === opt.value ? '' : opt.value }))}
+                className={`min-h-[44px] px-4 rounded-xl text-sm font-medium border transition-colors ${
+                  pumpingForm.storageType === opt.value
+                    ? 'bg-blue-500 border-blue-500 text-white'
+                    : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {pumpingForm.storageType && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {STORAGE_EXPIRY_HINT[pumpingForm.storageType]}
+            </p>
+          )}
+        </div>
         <TimeInput label="時間" value={pumpingForm.pumpedAt} onChange={v => setPumpingForm(f => ({ ...f, pumpedAt: v }))} />
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">備註（選填）</label>
@@ -312,36 +361,24 @@ export default function BreastMilkPage() {
         </div>
       </RecordFormModal>
 
+      {/* 更新存量 modal */}
       <RecordFormModal
-        open={modalOpen && tab === 'storage'}
-        onClose={() => setModalOpen(false)}
-        title="新增母乳庫存"
-        onSubmit={handleStorageSubmit}
-        submitting={submitting}
+        open={remainingRecord != null}
+        onClose={() => setRemainingRecord(null)}
+        title={`更新存量 ${remainingRecord ? batchNo(remainingRecord.id) : ''}`}
+        onSubmit={handleRemainingSubmit}
+        submitting={remainingSubmitting}
       >
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          原始：{remainingRecord?.totalAmount ?? 0} ml・{remainingRecord ? STORAGE_LABEL[remainingRecord.storageType] : ''}
+        </p>
         <NumberInput
-          label="量"
-          value={storageForm.amount}
-          onChange={v => setStorageForm(f => ({ ...f, amount: v }))}
+          label="剩餘量"
+          value={remainingInput}
+          onChange={setRemainingInput}
           placeholder="0"
           unit="ml"
         />
-        <SegmentedControl
-          options={STORAGE_OPTIONS}
-          value={storageForm.storageType}
-          onChange={v => setStorageForm(f => ({ ...f, storageType: v }))}
-        />
-        <TimeInput label="儲存時間" value={storageForm.storedAt} onChange={v => setStorageForm(f => ({ ...f, storedAt: v }))} />
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">備註（選填）</label>
-          <textarea
-            placeholder="備註..."
-            value={storageForm.note}
-            onChange={e => setStorageForm(f => ({ ...f, note: e.target.value }))}
-            rows={2}
-            className={`${inputClass} resize-none`}
-          />
-        </div>
       </RecordFormModal>
     </>
   )

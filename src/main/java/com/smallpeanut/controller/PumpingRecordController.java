@@ -2,6 +2,7 @@ package com.smallpeanut.controller;
 
 import com.smallpeanut.dto.PumpingRecordRequest;
 import com.smallpeanut.dto.PumpingRecordResponse;
+import com.smallpeanut.dto.PumpingRemainingRequest;
 import com.smallpeanut.service.PumpingRecordService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,10 +28,22 @@ public class PumpingRecordController {
         return service.findAll();
     }
 
+    @GetMapping("/storage")
+    public List<PumpingRecordResponse> getAllStorage() {
+        return service.findAllStorage();
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public PumpingRecordResponse create(@Valid @RequestBody PumpingRecordRequest request) {
         return service.create(request);
+    }
+
+    @PatchMapping("/{id}/remaining")
+    public PumpingRecordResponse updateRemaining(
+            @PathVariable Long id,
+            @Valid @RequestBody PumpingRemainingRequest request) {
+        return service.updateRemaining(id, request.remaining());
     }
 
     @DeleteMapping("/{id}")

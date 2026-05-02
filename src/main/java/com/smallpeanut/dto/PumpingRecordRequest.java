@@ -1,5 +1,6 @@
 package com.smallpeanut.dto;
 
+import com.smallpeanut.model.StorageType;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 
@@ -9,5 +10,6 @@ public record PumpingRecordRequest(
         Integer leftAmount,
         Integer rightAmount,
         String note,
-        @NotNull Instant pumpedAt
+        @NotNull Instant pumpedAt,
+        StorageType storageType
 ) {}

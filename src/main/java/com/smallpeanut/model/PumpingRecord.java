@@ -20,6 +20,13 @@ public class PumpingRecord {
     private Integer rightAmount;
     private String note;
 
+    @Enumerated(EnumType.STRING)
+    private StorageType storageType;
+
+    private LocalDateTime expiresAt;
+
+    private Integer remainingAmount;
+
     @Column(nullable = false)
     private LocalDateTime pumpedAt;
 
