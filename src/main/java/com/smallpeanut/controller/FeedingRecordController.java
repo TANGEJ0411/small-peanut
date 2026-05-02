@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -18,7 +19,12 @@ public class FeedingRecordController {
     private final FeedingRecordService service;
 
     @GetMapping
-    public List<FeedingRecordResponse> getAll() {
+    public List<FeedingRecordResponse> getAll(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+        if (from != null && to != null) {
+            return service.findByDateRange(Instant.parse(from), Instant.parse(to));
+        }
         return service.findAll();
     }
 

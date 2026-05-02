@@ -3,7 +3,8 @@ import RecordFormModal from '../components/RecordFormModal'
 import TimeInput from '../components/TimeInput'
 import EmptyState from '../components/EmptyState'
 import FAB from '../components/FAB'
-import { nowLocalString, formatDate } from '../utils/dateUtils'
+import DateNavigator from '../components/DateNavigator'
+import { nowLocalString, formatDate, localDayRange } from '../utils/dateUtils'
 
 function makeDefaultForm() {
   return { heightCm: '', weightKg: '', headCircumferenceCm: '', note: '', recordedAt: nowLocalString() }
@@ -51,17 +52,19 @@ export default function GrowthPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(makeDefaultForm)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
 
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async (date) => {
+    const { from, to } = localDayRange(date)
     try {
-      const res = await fetch('/api/v1/growth')
+      const res = await fetch(`/api/v1/growth?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
       if (res.ok) setRecords(await res.json())
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchRecords() }, [fetchRecords])
+  useEffect(() => { fetchRecords(selectedDate) }, [fetchRecords, selectedDate])
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -77,7 +80,7 @@ export default function GrowthPage() {
           recordedAt: new Date(form.recordedAt).toISOString(),
         }),
       })
-      if (res.ok) { await fetchRecords(); setModalOpen(false) }
+      if (res.ok) { await fetchRecords(selectedDate); setModalOpen(false) }
     } finally {
       setSubmitting(false)
     }
@@ -97,12 +100,14 @@ export default function GrowthPage() {
     <>
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">成長指標</h2>
 
+      <DateNavigator date={selectedDate} onChange={d => { setLoading(true); setSelectedDate(d) }} />
+
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : records.length === 0 ? (
-        <EmptyState message="還沒有成長紀錄，點擊右下角 + 新增" />
+        <EmptyState message="這天沒有成長紀錄" />
       ) : (
         <div className="flex flex-col gap-2">
           {records.map(record => (

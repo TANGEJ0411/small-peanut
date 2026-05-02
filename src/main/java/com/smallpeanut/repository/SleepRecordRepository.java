@@ -12,4 +12,6 @@ public interface SleepRecordRepository extends JpaRepository<SleepRecord, Long> 
 
     @Query("SELECT s FROM SleepRecord s WHERE s.fellAsleepAt >= :since")
     List<SleepRecord> findAllSince(@Param("since") LocalDateTime since);
+
+    List<SleepRecord> findAllByFellAsleepAtBetweenOrderByFellAsleepAtDesc(LocalDateTime from, LocalDateTime to);
 }

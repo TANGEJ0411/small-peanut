@@ -3,7 +3,8 @@ import RecordFormModal from '../components/RecordFormModal'
 import TimeInput from '../components/TimeInput'
 import EmptyState from '../components/EmptyState'
 import FAB from '../components/FAB'
-import { nowLocalString, formatDate, formatTime } from '../utils/dateUtils'
+import DateNavigator from '../components/DateNavigator'
+import { nowLocalString, formatDate, formatTime, localDayRange } from '../utils/dateUtils'
 
 const PRESET_GROUPS = [
   {
@@ -15,8 +16,6 @@ const PRESET_GROUPS = [
     tags: ['翻身', '坐起來', '會站', '長牙', '走路', '說話'],
   },
 ]
-
-const ALL_PRESETS = PRESET_GROUPS.flatMap(g => g.tags)
 
 function makeDefaultForm() {
   return { tagName: '', customTag: '', note: '', recordedAt: nowLocalString() }
@@ -47,17 +46,19 @@ export default function StatusTagPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(makeDefaultForm)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
 
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async (date) => {
+    const { from, to } = localDayRange(date)
     try {
-      const res = await fetch('/api/v1/tags')
+      const res = await fetch(`/api/v1/tags?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
       if (res.ok) setRecords(await res.json())
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchRecords() }, [fetchRecords])
+  useEffect(() => { fetchRecords(selectedDate) }, [fetchRecords, selectedDate])
 
   function selectTag(tag) {
     setForm(f => ({ ...f, tagName: f.tagName === tag ? '' : tag, customTag: '' }))
@@ -80,7 +81,7 @@ export default function StatusTagPage() {
           recordedAt: new Date(form.recordedAt).toISOString(),
         }),
       })
-      if (res.ok) { await fetchRecords(); setModalOpen(false) }
+      if (res.ok) { await fetchRecords(selectedDate); setModalOpen(false) }
     } finally {
       setSubmitting(false)
     }
@@ -100,12 +101,14 @@ export default function StatusTagPage() {
     <>
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">狀態標籤</h2>
 
+      <DateNavigator date={selectedDate} onChange={d => { setLoading(true); setSelectedDate(d) }} />
+
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : records.length === 0 ? (
-        <EmptyState message="還沒有狀態紀錄，點擊右下角 + 新增" />
+        <EmptyState message="這天沒有狀態紀錄" />
       ) : (
         <div className="flex flex-col gap-2">
           {records.map(record => (

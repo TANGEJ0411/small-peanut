@@ -39,3 +39,21 @@ export function todayString() {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
   })
 }
+
+export function localDayRange(date) {
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(date)
+  end.setHours(23, 59, 59, 999)
+  return { from: start.toISOString(), to: end.toISOString() }
+}
+
+export function isSameLocalDay(a, b) {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+}
+
+export function formatShortDate(date) {
+  return date.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'short' })
+}

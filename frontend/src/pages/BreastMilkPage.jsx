@@ -6,7 +6,8 @@ import SegmentedControl from '../components/SegmentedControl'
 import TimeInput from '../components/TimeInput'
 import EmptyState from '../components/EmptyState'
 import FAB from '../components/FAB'
-import { nowLocalString, formatTime, formatDate } from '../utils/dateUtils'
+import DateNavigator from '../components/DateNavigator'
+import { nowLocalString, formatTime, formatDate, localDayRange } from '../utils/dateUtils'
 
 const TAB_OPTIONS = [
   { value: 'pumping', label: '擠奶紀錄' },
@@ -70,9 +71,11 @@ export default function BreastMilkPage() {
   const [pumpingForm, setPumpingForm] = useState(makeDefaultPumpingForm)
   const [storageForm, setStorageForm] = useState(makeDefaultStorageForm)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
 
-  const fetchPumping = useCallback(async () => {
-    const res = await fetch('/api/v1/pumping')
+  const fetchPumping = useCallback(async (date) => {
+    const { from, to } = localDayRange(date)
+    const res = await fetch(`/api/v1/pumping?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
     if (res.ok) setPumpingRecords(await res.json())
   }, [])
 
@@ -82,8 +85,8 @@ export default function BreastMilkPage() {
   }, [])
 
   useEffect(() => {
-    Promise.all([fetchPumping(), fetchStorage()]).finally(() => setLoading(false))
-  }, [fetchPumping, fetchStorage])
+    Promise.all([fetchPumping(selectedDate), fetchStorage()]).finally(() => setLoading(false))
+  }, [fetchPumping, fetchStorage, selectedDate])
 
   async function handlePumpingSubmit() {
     setSubmitting(true)
@@ -100,7 +103,7 @@ export default function BreastMilkPage() {
           pumpedAt: new Date(pumpingForm.pumpedAt).toISOString(),
         }),
       })
-      if (res.ok) { await fetchPumping(); setModalOpen(false) }
+      if (res.ok) { await fetchPumping(selectedDate); setModalOpen(false) }
     } finally {
       setSubmitting(false)
     }
@@ -161,6 +164,12 @@ export default function BreastMilkPage() {
 
       <SegmentedControl options={TAB_OPTIONS} value={tab} onChange={setTab} />
 
+      {tab === 'pumping' && (
+        <div className="mt-4">
+          <DateNavigator date={selectedDate} onChange={d => { setLoading(true); setSelectedDate(d) }} />
+        </div>
+      )}
+
       <div className="mt-4">
         {loading ? (
           <div className="flex justify-center py-20">
@@ -168,7 +177,7 @@ export default function BreastMilkPage() {
           </div>
         ) : tab === 'pumping' ? (
           pumpingRecords.length === 0 ? (
-            <EmptyState message="還沒有擠奶紀錄，點擊右下角 + 新增" />
+            <EmptyState message="這天沒有擠奶紀錄" />
           ) : (
             <RecordList
               records={pumpingRecords}

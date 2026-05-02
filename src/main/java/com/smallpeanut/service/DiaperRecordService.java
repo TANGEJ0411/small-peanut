@@ -6,6 +6,7 @@ import com.smallpeanut.model.DiaperRecord;
 import com.smallpeanut.repository.DiaperRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -20,6 +21,13 @@ public class DiaperRecordService {
         return repository.findAllByOrderByRecordedAtDesc().stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public List<DiaperRecordResponse> findByDateRange(Instant from, Instant to) {
+        return repository.findAllByRecordedAtBetweenOrderByRecordedAtDesc(
+                LocalDateTime.ofInstant(from, ZoneOffset.UTC),
+                LocalDateTime.ofInstant(to, ZoneOffset.UTC))
+                .stream().map(this::toResponse).toList();
     }
 
     public DiaperRecordResponse create(DiaperRecordRequest request) {

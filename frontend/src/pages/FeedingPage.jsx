@@ -4,7 +4,8 @@ import SegmentedControl from '../components/SegmentedControl'
 import TimeInput from '../components/TimeInput'
 import EmptyState from '../components/EmptyState'
 import FAB from '../components/FAB'
-import { nowLocalString, formatTime, formatDuration } from '../utils/dateUtils'
+import DateNavigator from '../components/DateNavigator'
+import { nowLocalString, formatTime, formatDuration, localDayRange } from '../utils/dateUtils'
 
 const TYPE_OPTIONS = [
   { value: 'BREASTFEED', label: '親餵母乳' },
@@ -58,17 +59,19 @@ export default function FeedingPage() {
   const [form, setForm] = useState(makeDefaultForm)
   const [endForm, setEndForm] = useState(makeEndForm)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
 
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async (date) => {
+    const { from, to } = localDayRange(date)
     try {
-      const res = await fetch('/api/v1/feeding')
+      const res = await fetch(`/api/v1/feeding?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
       if (res.ok) setRecords(await res.json())
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchRecords() }, [fetchRecords])
+  useEffect(() => { fetchRecords(selectedDate) }, [fetchRecords, selectedDate])
 
   const activeFeeding = records.find(r => r.endedAt == null)
 
@@ -88,7 +91,7 @@ export default function FeedingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (res.ok) { await fetchRecords(); setAddModalOpen(false) }
+      if (res.ok) { await fetchRecords(selectedDate); setAddModalOpen(false) }
     } finally {
       setSubmitting(false)
     }
@@ -102,7 +105,7 @@ export default function FeedingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endedAt: new Date(endForm.endedAt).toISOString() }),
       })
-      if (res.ok) { await fetchRecords(); setEndModalId(null) }
+      if (res.ok) { await fetchRecords(selectedDate); setEndModalId(null) }
     } finally {
       setSubmitting(false)
     }
@@ -126,6 +129,8 @@ export default function FeedingPage() {
   return (
     <>
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">餵食紀錄</h2>
+
+      <DateNavigator date={selectedDate} onChange={d => { setLoading(true); setSelectedDate(d) }} />
 
       {loading ? (
         <div className="flex justify-center py-20">
@@ -154,7 +159,7 @@ export default function FeedingPage() {
           )}
 
           {records.length === 0 ? (
-            <EmptyState message="還沒有餵食紀錄，點擊右下角 + 新增" />
+            <EmptyState message="這天沒有餵食紀錄" />
           ) : (
             <div className="flex flex-col gap-2">
               {records.map(record => {

@@ -6,7 +6,8 @@ import SegmentedControl from '../components/SegmentedControl'
 import TimeInput from '../components/TimeInput'
 import EmptyState from '../components/EmptyState'
 import FAB from '../components/FAB'
-import { nowLocalString, formatTime } from '../utils/dateUtils'
+import DateNavigator from '../components/DateNavigator'
+import { nowLocalString, formatTime, localDayRange } from '../utils/dateUtils'
 
 const TYPE_OPTIONS = [
   { value: 'CLEAN', label: '乾淨' },
@@ -29,19 +30,19 @@ export default function DiaperPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(makeDefaultForm)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
 
-  // loading starts as true; fetchRecords only sets it to false so the
-  // initial mount shows the spinner without a synchronous setState in effect
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async (date) => {
+    const { from, to } = localDayRange(date)
     try {
-      const res = await fetch('/api/v1/diapers')
+      const res = await fetch(`/api/v1/diapers?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
       if (res.ok) setRecords(await res.json())
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchRecords() }, [fetchRecords])
+  useEffect(() => { fetchRecords(selectedDate) }, [fetchRecords, selectedDate])
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -52,7 +53,7 @@ export default function DiaperPage() {
         body: JSON.stringify({ ...form, recordedAt: new Date(form.recordedAt).toISOString() }),
       })
       if (res.ok) {
-        await fetchRecords()
+        await fetchRecords(selectedDate)
         setModalOpen(false)
       }
     } finally {
@@ -76,12 +77,14 @@ export default function DiaperPage() {
     <>
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">換尿布紀錄</h2>
 
+      <DateNavigator date={selectedDate} onChange={d => { setLoading(true); setSelectedDate(d) }} />
+
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : records.length === 0 ? (
-        <EmptyState message="還沒有換尿布紀錄，點擊右下角 + 新增" />
+        <EmptyState message="這天沒有換尿布紀錄" />
       ) : (
         <RecordList
           records={records}

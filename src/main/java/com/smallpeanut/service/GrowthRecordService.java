@@ -6,6 +6,7 @@ import com.smallpeanut.model.GrowthRecord;
 import com.smallpeanut.repository.GrowthRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -20,6 +21,13 @@ public class GrowthRecordService {
         return repository.findAllByOrderByRecordedAtDesc().stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public List<GrowthRecordResponse> findByDateRange(Instant from, Instant to) {
+        return repository.findAllByRecordedAtBetweenOrderByRecordedAtDesc(
+                LocalDateTime.ofInstant(from, ZoneOffset.UTC),
+                LocalDateTime.ofInstant(to, ZoneOffset.UTC))
+                .stream().map(this::toResponse).toList();
     }
 
     public GrowthRecordResponse create(GrowthRecordRequest request) {

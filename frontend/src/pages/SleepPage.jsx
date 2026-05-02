@@ -3,7 +3,8 @@ import RecordFormModal from '../components/RecordFormModal'
 import TimeInput from '../components/TimeInput'
 import EmptyState from '../components/EmptyState'
 import FAB from '../components/FAB'
-import { nowLocalString, formatTime, formatDuration } from '../utils/dateUtils'
+import DateNavigator from '../components/DateNavigator'
+import { nowLocalString, formatTime, formatDuration, localDayRange } from '../utils/dateUtils'
 
 const LOCATION_OPTIONS = ['嬰兒床', '大床', '推車', '揹巾']
 
@@ -31,17 +32,19 @@ export default function SleepPage() {
   const [wakeForm, setWakeForm] = useState(makeWakeForm)
   const [submitting, setSubmitting] = useState(false)
   const [tick, setTick] = useState(0)
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
 
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async (date) => {
+    const { from, to } = localDayRange(date)
     try {
-      const res = await fetch('/api/v1/sleep')
+      const res = await fetch(`/api/v1/sleep?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
       if (res.ok) setRecords(await res.json())
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchRecords() }, [fetchRecords])
+  useEffect(() => { fetchRecords(selectedDate) }, [fetchRecords, selectedDate])
 
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 60000)
@@ -63,7 +66,7 @@ export default function SleepPage() {
           note: form.note || null,
         }),
       })
-      if (res.ok) { await fetchRecords(); setAddModalOpen(false) }
+      if (res.ok) { await fetchRecords(selectedDate); setAddModalOpen(false) }
     } finally {
       setSubmitting(false)
     }
@@ -80,7 +83,7 @@ export default function SleepPage() {
           wokeUpAt: new Date(wakeForm.wokeUpAt).toISOString(),
         }),
       })
-      if (res.ok) { await fetchRecords(); setWakeModalId(null) }
+      if (res.ok) { await fetchRecords(selectedDate); setWakeModalId(null) }
     } finally {
       setSubmitting(false)
     }
@@ -104,6 +107,8 @@ export default function SleepPage() {
   return (
     <>
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">睡眠紀錄</h2>
+
+      <DateNavigator date={selectedDate} onChange={d => { setLoading(true); setSelectedDate(d) }} />
 
       {loading ? (
         <div className="flex justify-center py-20">
@@ -133,7 +138,7 @@ export default function SleepPage() {
           )}
 
           {records.length === 0 ? (
-            <EmptyState message="還沒有睡眠紀錄，點擊右下角 + 新增" />
+            <EmptyState message="這天沒有睡眠紀錄" />
           ) : (
             <div className="flex flex-col gap-2">
               {records.map(record => {

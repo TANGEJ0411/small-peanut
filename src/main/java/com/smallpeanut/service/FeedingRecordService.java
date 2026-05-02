@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -24,6 +25,13 @@ public class FeedingRecordService {
         return repository.findAllByOrderByStartedAtDesc().stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public List<FeedingRecordResponse> findByDateRange(Instant from, Instant to) {
+        return repository.findAllByStartedAtBetweenOrderByStartedAtDesc(
+                LocalDateTime.ofInstant(from, ZoneOffset.UTC),
+                LocalDateTime.ofInstant(to, ZoneOffset.UTC))
+                .stream().map(this::toResponse).toList();
     }
 
     public FeedingRecordResponse create(FeedingRecordRequest request) {
