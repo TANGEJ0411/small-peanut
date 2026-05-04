@@ -5,6 +5,9 @@ import { timeAgo, formatDuration, todayString } from '../utils/dateUtils'
 const DIAPER_LABELS = { CLEAN: '乾淨', URINE: '尿尿', STOOL: '便便' }
 const FEEDING_LABELS = { BREASTFEED: '親餵母乳', BOTTLE_BREAST_MILK: '瓶餵母乳', FORMULA: '配方奶' }
 
+const ROUTE_LABELS = { ORAL: '口服', TOPICAL: '外用', INJECTION: '注射', EYE_EAR_DROPS: '滴劑', INHALER: '吸入', SUPPOSITORY: '栓劑' }
+const MEAL_SLOT_LABELS = { BEFORE_BREAKFAST: '早餐前', AFTER_BREAKFAST: '早餐後', BEFORE_LUNCH: '午餐前', AFTER_LUNCH: '午餐後', BEFORE_DINNER: '晚餐前', AFTER_DINNER: '晚餐後', BEFORE_SLEEP: '睡前' }
+
 function SummaryCard({ icon, label, primary, secondary, onClick, highlight }) {
   return (
     <button
@@ -66,6 +69,27 @@ export default function HomePage() {
   const lastDiaper = dashboard?.lastDiaper
   const lastFeeding = dashboard?.lastFeeding
   const todaySleep = dashboard?.todaySleepMinutes ?? 0
+  const upcomingMeds = dashboard?.upcomingMedications ?? []
+
+  async function markMedDone(pending) {
+    await fetch('/api/v1/medication-records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scheduleId: pending.scheduleId,
+        mealSlot: pending.mealSlot || null,
+        administeredAt: new Date().toISOString(),
+      }),
+    })
+    fetchDashboard()
+  }
+
+  function medPendingLabel(p) {
+    if (p.timingType === 'MEAL_BASED') {
+      return `${p.name}${p.dosage ? ` ${p.dosage}` : ''} • ${ROUTE_LABELS[p.route] ?? p.route} • ${MEAL_SLOT_LABELS[p.mealSlot] ?? p.mealSlot}`
+    }
+    return `${p.name}${p.dosage ? ` ${p.dosage}` : ''} • ${ROUTE_LABELS[p.route] ?? p.route} • 今日 ${p.doneToday}/${p.totalToday} 次`
+  }
 
   function nextFeedingLabel() {
     if (!lastFeeding) return '尚無紀錄'
@@ -105,6 +129,38 @@ export default function HomePage() {
               >
                 記錄醒來
               </button>
+            </div>
+          )}
+
+          {upcomingMeds.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+                <span className="text-base">💊</span>
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">今日待服藥提醒</p>
+              </div>
+              <div className="divide-y divide-amber-100 dark:divide-amber-900">
+                {upcomingMeds.slice(0, 3).map((p, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                    <p className="flex-1 text-sm text-amber-900 dark:text-amber-200 min-w-0 truncate">
+                      {medPendingLabel(p)}
+                    </p>
+                    <button
+                      onClick={() => markMedDone(p)}
+                      className="flex-shrink-0 min-h-[36px] px-3 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      已服
+                    </button>
+                  </div>
+                ))}
+                {upcomingMeds.length > 3 && (
+                  <div className="px-4 py-2">
+                    <button onClick={() => navigate('/health')} className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                      還有 {upcomingMeds.length - 3} 筆 →
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="pb-1" />
             </div>
           )}
 

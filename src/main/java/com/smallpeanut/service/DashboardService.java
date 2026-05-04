@@ -1,16 +1,15 @@
 package com.smallpeanut.service;
 
 import com.smallpeanut.dto.DashboardResponse;
-import com.smallpeanut.model.SleepRecord;
-import com.smallpeanut.repository.DiaperRecordRepository;
-import com.smallpeanut.repository.FeedingRecordRepository;
-import com.smallpeanut.repository.SleepRecordRepository;
+import com.smallpeanut.model.*;
+import com.smallpeanut.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -22,13 +21,16 @@ public class DashboardService {
     private final DiaperRecordRepository diaperRepository;
     private final FeedingRecordRepository feedingRepository;
     private final SleepRecordRepository sleepRepository;
+    private final MedicationScheduleRepository medicationScheduleRepository;
+    private final MedicationRecordRepository medicationRecordRepository;
 
     public DashboardResponse getSummary() {
         return new DashboardResponse(
                 buildLastDiaper(),
                 buildLastFeeding(),
                 buildTodaySleepMinutes(),
-                buildActiveSleep()
+                buildActiveSleep(),
+                buildUpcomingMedications()
         );
     }
 
@@ -79,5 +81,45 @@ public class DashboardService {
                             elapsed);
                 })
                 .orElse(null);
+    }
+
+    private List<DashboardResponse.PendingMedication> buildUpcomingMedications() {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(23, 59, 59, 999_000_000);
+
+        List<MedicationSchedule> activeSchedules =
+                medicationScheduleRepository.findAllActiveForDate(today);
+        List<MedicationRecord> todayRecords =
+                medicationRecordRepository.findAllByAdministeredAtBetween(startOfDay, endOfDay);
+
+        List<DashboardResponse.PendingMedication> result = new ArrayList<>();
+
+        for (MedicationSchedule schedule : activeSchedules) {
+            if (schedule.getTimingType() == TimingType.MEAL_BASED) {
+                for (MealSlot slot : schedule.getMealSlots()) {
+                    boolean done = todayRecords.stream().anyMatch(r ->
+                            schedule.getId().equals(r.getScheduleId()) && slot == r.getMealSlot());
+                    if (!done) {
+                        result.add(new DashboardResponse.PendingMedication(
+                                schedule.getId(), schedule.getName(), schedule.getDosage(),
+                                schedule.getRoute().name(), TimingType.MEAL_BASED.name(),
+                                slot.name(), null, null));
+                    }
+                }
+            } else if (schedule.getTimingType() == TimingType.DAILY_FREQUENCY
+                    && schedule.getFrequencyPerDay() != null) {
+                long doneCount = todayRecords.stream()
+                        .filter(r -> schedule.getId().equals(r.getScheduleId())).count();
+                if (doneCount < schedule.getFrequencyPerDay()) {
+                    result.add(new DashboardResponse.PendingMedication(
+                            schedule.getId(), schedule.getName(), schedule.getDosage(),
+                            schedule.getRoute().name(), TimingType.DAILY_FREQUENCY.name(),
+                            null, (int) doneCount, schedule.getFrequencyPerDay()));
+                }
+            }
+        }
+
+        return result;
     }
 }
