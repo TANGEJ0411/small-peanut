@@ -55,7 +55,7 @@ function buildRange(daysBack) {
   return { from: start.toISOString(), to: end.toISOString() }
 }
 
-function buildChartData({ sleep, feeding, diapers, pumping, growth }) {
+function buildChartData({ sleep, feeding, diapers, pumping, growth, solidFood }) {
   const days7  = buildDayArray(7)
   const days14 = buildDayArray(14)
 
@@ -142,7 +142,20 @@ function buildChartData({ sleep, feeding, diapers, pumping, growth }) {
     head:   growthSeries('headCircumferenceCm'),
   }
 
-  return { sleepData, sleepGanttData, feedingData, feedingMlData, diaperData, pumpingData, milkBalanceData, growthData }
+  // ── Solid food vs milk ────────────────────────────────────────────────────
+  const solidFoodMilkData = days14.map(day => {
+    const sfRecs = solidFood.filter(r => onLocalDay(r.recordedAt, day))
+    const fRecs  = feeding.filter(r => onLocalDay(r.startedAt, day))
+    return {
+      day: dayLabel(day),
+      milkMl: fRecs
+        .filter(r => r.feedingType === 'BOTTLE_BREAST_MILK' || r.feedingType === 'FORMULA')
+        .reduce((s, r) => s + (r.amountMl ?? 0), 0),
+      solidG: sfRecs.reduce((s, r) => s + (r.amountG ?? 0), 0),
+    }
+  })
+
+  return { sleepData, sleepGanttData, feedingData, feedingMlData, diaperData, pumpingData, milkBalanceData, growthData, solidFoodMilkData }
 }
 
 // ── Recharts theme helpers ────────────────────────────────────────────────────
@@ -621,6 +634,60 @@ function MilkBalanceChart({ data, dark }) {
   )
 }
 
+// ── 9. Solid food vs milk comparison ────────────────────────────────────────
+
+function SolidFoodMilkChart({ data, dark }) {
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null
+    const milk  = payload.find(p => p.dataKey === 'milkMl')?.value ?? 0
+    const solid = payload.find(p => p.dataKey === 'solidG')?.value ?? 0
+    return (
+      <div style={{
+        background: dark ? '#1f2937' : '#fff',
+        border: `1px solid ${dark ? '#374151' : '#e5e7eb'}`,
+        borderRadius: 8,
+        padding: '8px 12px',
+        fontSize: 12,
+      }}>
+        <p style={{ color: dark ? '#f9fafb' : '#111827', fontWeight: 600, marginBottom: 4 }}>{label}</p>
+        <p style={{ color: '#3b82f6', margin: '2px 0' }}>喝奶：{milk} ml</p>
+        <p style={{ color: '#84cc16', margin: '2px 0' }}>副食品：{solid} g</p>
+      </div>
+    )
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={210}>
+      <ComposedChart data={data} margin={{ top: 4, right: 40, bottom: 0, left: -8 }}>
+        <CartesianGrid {...rGrid(dark)} />
+        <XAxis dataKey="day" tick={rTick(dark)} interval={1} />
+        <YAxis yAxisId="milk"  tick={rTick(dark)} unit=" ml" domain={[0, 'auto']} />
+        <YAxis yAxisId="solid" orientation="right" tick={rTick(dark)} unit=" g" domain={[0, 'auto']} />
+        <Tooltip content={<CustomTooltip />} />
+        <Legend
+          iconSize={8}
+          formatter={name => (
+            <span style={{ fontSize: 11, color: dark ? '#9ca3af' : '#6b7280' }}>
+              {name === 'milkMl' ? '喝奶（ml）' : '副食品（g）'}
+            </span>
+          )}
+        />
+        <Bar
+          yAxisId="milk" dataKey="milkMl"
+          fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={32}
+          name="milkMl"
+        />
+        <Line
+          yAxisId="solid" dataKey="solidG" type="monotone"
+          stroke="#84cc16" strokeWidth={2.5}
+          dot={{ r: 4, fill: '#84cc16', strokeWidth: 0 }} activeDot={{ r: 6 }}
+          name="solidG"
+        />
+      </ComposedChart>
+    </ResponsiveContainer>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AnalysisPage() {
@@ -636,14 +703,15 @@ export default function AnalysisPage() {
         const r14 = buildRange(14)
         const q7  = `from=${encodeURIComponent(r7.from)}&to=${encodeURIComponent(r7.to)}`
         const q14 = `from=${encodeURIComponent(r14.from)}&to=${encodeURIComponent(r14.to)}`
-        const [sleep, feeding, diapers, pumping, growth] = await Promise.all([
+        const [sleep, feeding, diapers, pumping, growth, solidFood] = await Promise.all([
           fetch(`/api/v1/sleep?${q7}`).then(r => r.json()),
-          fetch(`/api/v1/feeding?${q7}`).then(r => r.json()),
+          fetch(`/api/v1/feeding?${q14}`).then(r => r.json()),
           fetch(`/api/v1/diapers?${q7}`).then(r => r.json()),
           fetch(`/api/v1/pumping?${q14}`).then(r => r.json()),
           fetch('/api/v1/growth').then(r => r.json()),
+          fetch(`/api/v1/solid-food?${q14}`).then(r => r.json()),
         ])
-        setChartData(buildChartData({ sleep, feeding, diapers, pumping, growth }))
+        setChartData(buildChartData({ sleep, feeding, diapers, pumping, growth, solidFood }))
       } catch {
         setError(true)
       } finally {
@@ -716,6 +784,10 @@ export default function AnalysisPage() {
 
       <ChartCard title="🥛 母乳供需" note="近 7 天・ml">
         <MilkBalanceChart data={chartData.milkBalanceData} dark={dark} />
+      </ChartCard>
+
+      <ChartCard title="🥣 副食品 vs 奶量" note="近 14 天・柱=喝奶 線=副食品">
+        <SolidFoodMilkChart data={chartData.solidFoodMilkData} dark={dark} />
       </ChartCard>
     </div>
   )

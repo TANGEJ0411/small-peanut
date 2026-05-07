@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 育嬰紀錄 Web App，行動端優先。Spring Boot 3.4.5 (Java 21) 在專案根目錄，React 19 + Tailwind CSS 3 在 `frontend/` 子目錄。
 
-**目前開發階段：Phase 1 MVP 已完成；Phase 2 資料分析圖表（含真實 API 接入）已完成；健康管理（用藥/疫苗/就醫）已完成。**  
+**目前開發階段：Phase 1 MVP 已完成；Phase 2 資料分析圖表（含真實 API 接入）已完成；健康管理（用藥/疫苗/就醫）已完成。**
 Phase 3（JWT 安全、CSV/PDF 匯出、S3 照片儲存）已確認不做。
 
 ---
@@ -67,6 +67,7 @@ public class XxxRecord {
 ```
 
 **規則：**
+
 - 一定要有 `createdAt` + `@PrePersist`
 - 所有時間欄位存 UTC `LocalDateTime`，不存帶時區的型別
 - Enum 欄位一律 `@Enumerated(EnumType.STRING)`，Enum 定義放在 `model/` 下獨立檔案
@@ -93,6 +94,7 @@ public record XxxResponse(
 ```
 
 **規則：**
+
 - Request 的時間欄位用 `Instant`（Jackson 自動處理 ISO-8601）
 - Response 的 Enum 欄位用 `String`（前端不依賴 Java enum）
 - 必填欄位加 `@NotNull` 或 `@NotBlank`
@@ -149,6 +151,7 @@ public class XxxRecordService {
 ```
 
 **規則：**
+
 - `LocalDateTime ↔ Instant` 轉換固定用 `ZoneOffset.UTC`
 - `toResponse()` 是 private helper，每個 service 都有
 - 時長（durationMinutes）只由後端計算，永遠不讓前端傳入算好的值
@@ -181,6 +184,7 @@ public class XxxRecordController {
 ```
 
 **規則：**
+
 - `from`/`to` 接受 URL-encoded UTC ISO 字串（前端用 `encodeURIComponent(date.toISOString())`）
 - PATCH 用於部分更新（如補填結束時間），語意上不同於 PUT
 
@@ -213,6 +217,7 @@ LocalDateTime endOfDay = today.atTime(23, 59, 59, 999_000_000);
 ### Dashboard 整合
 
 `DashboardResponse` 是 nested records 結構。新增首頁卡片需：
+
 1. 在 `DashboardResponse.java` 加新的 nested record
 2. 在 `DashboardService.java` 的 `getSummary()` 加對應的 `build...()` 方法
 3. 注入需要的 repository（`@RequiredArgsConstructor` 自動注入）
@@ -339,6 +344,7 @@ export default function XxxPage() {
 ### 加入路由
 
 在 `App.jsx` 的 `<Routes>` 加一行：
+
 ```jsx
 <Route path="/records/xxx" element={<XxxPage />} />
 ```
@@ -351,17 +357,17 @@ export default function XxxPage() {
 
 ### dateUtils.js 所有函式
 
-| 函式 | 回傳 | 用途 |
-|------|------|------|
-| `nowLocalString()` | `"2026-05-04T14:30"` | `<input type="datetime-local">` 的預設值 |
-| `localDayRange(date)` | `{ from: ISO, to: ISO }` | 日期頁面 fetch API 的 query params |
-| `formatTime(isoStr)` | `"14:30"` | 卡片/清單顯示時間 |
-| `formatDate(isoStr)` | `"2026年5月4日（週一）"` | 完整日期顯示 |
-| `formatShortDate(date)` | `"5月4日（週一）"` | DateNavigator 顯示 |
-| `timeAgo(isoStr)` | `"3 小時前"` | 首頁摘要卡片 |
-| `formatDuration(minutes)` | `"1 小時 30 分"` | 睡眠時長顯示 |
-| `isSameLocalDay(a, b)` | `boolean` | DateNavigator 判斷是否今天 |
-| `todayString()` | `"2026年5月4日（週一）"` | 首頁標題日期 |
+| 函式                        | 回傳                       | 用途                                       |
+| --------------------------- | -------------------------- | ------------------------------------------ |
+| `nowLocalString()`        | `"2026-05-04T14:30"`     | `<input type="datetime-local">` 的預設值 |
+| `localDayRange(date)`     | `{ from: ISO, to: ISO }` | 日期頁面 fetch API 的 query params         |
+| `formatTime(isoStr)`      | `"14:30"`                | 卡片/清單顯示時間                          |
+| `formatDate(isoStr)`      | `"2026年5月4日（週一）"` | 完整日期顯示                               |
+| `formatShortDate(date)`   | `"5月4日（週一）"`       | DateNavigator 顯示                         |
+| `timeAgo(isoStr)`         | `"3 小時前"`             | 首頁摘要卡片                               |
+| `formatDuration(minutes)` | `"1 小時 30 分"`         | 睡眠時長顯示                               |
+| `isSameLocalDay(a, b)`    | `boolean`                | DateNavigator 判斷是否今天                 |
+| `todayString()`           | `"2026年5月4日（週一）"` | 首頁標題日期                               |
 
 ### 共用元件的 props 簽名
 
@@ -479,26 +485,26 @@ service/      業務邏輯，包含 toResponse() 轉換
 
 ### 已實作的 API 端點
 
-| 路徑 | 方法 | 說明 |
-|------|------|------|
-| `/api/v1/health` | GET | 健康檢查 |
-| `/api/v1/dashboard` | GET | 首頁摘要（最後餵食/換尿布、今日睡眠、active sleep、待服藥提醒） |
-| `/api/v1/diapers` | GET / POST / DELETE `/{id}` | 換尿布紀錄 |
-| `/api/v1/feeding` | GET / POST / DELETE `/{id}` | 餵食紀錄 |
-| `/api/v1/feeding/{id}/end` | PATCH | 補填結束時間，後端自動計算時長 |
-| `/api/v1/sleep` | GET / POST / DELETE `/{id}` | 睡眠紀錄 |
-| `/api/v1/sleep/{id}/wake` | PATCH | 補填醒來時間，後端自動計算時長 |
-| `/api/v1/pumping` | GET / POST / DELETE `/{id}` | 擠奶紀錄 |
-| `/api/v1/pumping/storage` | GET | 有設定儲存方式的擠奶紀錄 |
-| `/api/v1/pumping/{id}/remaining` | PATCH | 更新剩餘存量 |
-| `/api/v1/milk-storage` | GET / POST / DELETE `/{id}` | 舊母乳庫存（已棄用） |
-| `/api/v1/growth` | GET / POST / DELETE `/{id}` | 成長指標 |
-| `/api/v1/tags` | GET / POST / DELETE `/{id}` | 狀態標籤 |
-| `/api/v1/medication-schedules` | GET / POST / DELETE `/{id}` | 用藥計畫 |
-| `/api/v1/medication-schedules/{id}/toggle` | PATCH | 切換計畫啟用/停用 |
-| `/api/v1/medication-records` | GET / POST / DELETE `/{id}` | 實際用藥紀錄 |
-| `/api/v1/vaccines` | GET / POST / DELETE `/{id}` | 疫苗紀錄 |
-| `/api/v1/medical-visits` | GET / POST / DELETE `/{id}` | 就醫紀錄 |
+| 路徑                                         | 方法                          | 說明                                                            |
+| -------------------------------------------- | ----------------------------- | --------------------------------------------------------------- |
+| `/api/v1/health`                           | GET                           | 健康檢查                                                        |
+| `/api/v1/dashboard`                        | GET                           | 首頁摘要（最後餵食/換尿布、今日睡眠、active sleep、待服藥提醒） |
+| `/api/v1/diapers`                          | GET / POST / DELETE `/{id}` | 換尿布紀錄                                                      |
+| `/api/v1/feeding`                          | GET / POST / DELETE `/{id}` | 餵食紀錄                                                        |
+| `/api/v1/feeding/{id}/end`                 | PATCH                         | 補填結束時間，後端自動計算時長                                  |
+| `/api/v1/sleep`                            | GET / POST / DELETE `/{id}` | 睡眠紀錄                                                        |
+| `/api/v1/sleep/{id}/wake`                  | PATCH                         | 補填醒來時間，後端自動計算時長                                  |
+| `/api/v1/pumping`                          | GET / POST / DELETE `/{id}` | 擠奶紀錄                                                        |
+| `/api/v1/pumping/storage`                  | GET                           | 有設定儲存方式的擠奶紀錄                                        |
+| `/api/v1/pumping/{id}/remaining`           | PATCH                         | 更新剩餘存量                                                    |
+| `/api/v1/milk-storage`                     | GET / POST / DELETE `/{id}` | 舊母乳庫存（已棄用）                                            |
+| `/api/v1/growth`                           | GET / POST / DELETE `/{id}` | 成長指標                                                        |
+| `/api/v1/tags`                             | GET / POST / DELETE `/{id}` | 狀態標籤                                                        |
+| `/api/v1/medication-schedules`             | GET / POST / DELETE `/{id}` | 用藥計畫                                                        |
+| `/api/v1/medication-schedules/{id}/toggle` | PATCH                         | 切換計畫啟用/停用                                               |
+| `/api/v1/medication-records`               | GET / POST / DELETE `/{id}` | 實際用藥紀錄                                                    |
+| `/api/v1/vaccines`                         | GET / POST / DELETE `/{id}` | 疫苗紀錄                                                        |
+| `/api/v1/medical-visits`                   | GET / POST / DELETE `/{id}` | 就醫紀錄                                                        |
 
 **日期篩選：** GET 端點（`/pumping/storage`、`/growth`、`/dashboard`、`/medication-schedules` 除外）均支援 `?from=<ISO>&to=<ISO>` UTC 時間範圍查詢。不帶參數時回傳全部資料。
 
@@ -568,6 +574,7 @@ FAB fixed bottom-24 right-6   各紀錄頁的新增按鈕
 ### 母乳庫存模式
 
 母乳庫存功能整合在擠奶紀錄內（不是獨立 entity）：
+
 - `PumpingRecord` 有三個可為 null 的欄位：`storageType`（`ROOM_TEMP / FRIDGE / FREEZER`）、`expiresAt`（建立時自動計算）、`remainingAmount`
 - 建立擠奶紀錄時若傳入 `storageType`，後端自動計算 `expiresAt`（常溫 +3h、冷藏 +3d、冷凍 +3mo）並將 `remainingAmount` 設為總量
 - 庫存頁顯示所有有 `storageType` 的擠奶紀錄；`remainingAmount = 0` 視為用完
@@ -576,6 +583,7 @@ FAB fixed bottom-24 right-6   各紀錄頁的新增按鈕
 ### Active Session 模式
 
 睡眠與餵食使用「開始即記錄、事後補結束」模式：
+
 - POST 時 `wokeUpAt` / `endedAt` 可為 null
 - PATCH `/{id}/wake` 或 `/{id}/end` 補填結束時間，後端計算 `durationMinutes`
 - `durationMinutes` 由後端用 `ChronoUnit.MINUTES.between()` 計算，前端不做時長計算
@@ -593,6 +601,7 @@ FAB fixed bottom-24 right-6   各紀錄頁的新增按鈕
 健康管理分兩個概念層：
 
 **用藥計畫（`MedicationSchedule`）**：排程設定，驅動首頁提醒
+
 - `timingType`：`MEAL_BASED`（餐次）/ `DAILY_FREQUENCY`（每日N次）/ `AS_NEEDED`（需要時）
 - MEAL_BASED 有 `mealSlots`（`@ElementCollection(fetch=EAGER)` join table，enum：`BEFORE_BREAKFAST`、`AFTER_BREAKFAST`、`BEFORE_LUNCH`、`AFTER_LUNCH`、`BEFORE_DINNER`、`AFTER_DINNER`、`BEFORE_SLEEP`）
 - DAILY_FREQUENCY 有 `frequencyPerDay`
@@ -600,11 +609,13 @@ FAB fixed bottom-24 right-6   各紀錄頁的新增按鈕
 - `active` flag 可暫停計畫，切換用 `PATCH /{id}/toggle`
 
 **用藥紀錄（`MedicationRecord`）**：實際服藥 log
+
 - `scheduleId`（nullable）—— 提供時 service 自動從計畫複製 name/dosage/route
 - `mealSlot` nullable（DAILY_FREQUENCY / AS_NEEDED 不指定餐次）
 - 計畫刪除後紀錄仍完整（name/dosage/route 建立時冗餘複製）
 
 **Dashboard 提醒邏輯**（`DashboardService.buildUpcomingMedications()`）：
+
 - 查今日活躍計畫（`findAllActiveForDate(today)`），對照今日已建立的 `MedicationRecord`
 - MEAL_BASED：每個尚未記錄的 mealSlot 各產生一筆待辦
 - DAILY_FREQUENCY：今日紀錄數 < frequencyPerDay 時顯示進度（doneToday/totalToday）
@@ -617,6 +628,7 @@ FAB fixed bottom-24 right-6   各紀錄頁的新增按鈕
 ### 頁面共用模式（所有紀錄頁面）
 
 所有紀錄頁面遵循相同結構：
+
 1. `selectedDate` state（`useState(() => new Date())`）
 2. `fetchRecords(date)` 傳入日期，計算 `localDayRange(date)` 帶入 query params
 3. `useEffect(() => { fetchRecords(selectedDate) }, [fetchRecords, selectedDate])`
@@ -628,6 +640,7 @@ Sleep / Feeding 頁面額外有 active session banner（`records.find(r => r.end
 ### HealthPage 月曆架構
 
 與其他紀錄頁面結構不同，HealthPage 採月曆模式：
+
 - 以 `year`/`month` state 控制檢視月份，`selectedDay`（數字）控制選中日
 - 月份切換時一次 fetch 整月的三類資料（medication-records、vaccines、medical-visits）+ 全部 medication-schedules
 - `eventsByDate`（`useMemo`）將三類紀錄依本地日期 key（`YYYY-MM-DD`）分組；local date 轉換用 `new Date(isoStr)` 取 getFullYear/getMonth/getDate（不用 UTC date）
@@ -642,12 +655,14 @@ Sleep / Feeding 頁面額外有 active session banner（`records.find(r => r.end
 **資料流**：`useEffect` 並行 fetch 5 支 API（sleep 7d、feeding 7d、diapers 7d、pumping 14d、growth 全量），統一傳入 `buildChartData()` 轉換成各圖表需要的格式，結果放入 `chartData` state。有 loading spinner 和 error/retry 狀態。
 
 **模組層級 data helpers**：
+
 - `buildDayArray(n)` — 回傳從 n 天前到今天的 Date 陣列
 - `onLocalDay(isoStr, date)` — 判斷 ISO 字串是否在指定本地日
 - `toLocalDecimalHour(isoStr)` — 轉成小時小數（用於 timeline 定位）
 - `buildRange(daysBack)` — 回傳 `{ from, to }` ISO 字串（本地午夜到 23:59:59.999）
 
 **API response 欄位名稱**（`buildChartData` 依賴這些欄位名，不能改）：
+
 - sleep: `fellAsleepAt`、`durationMinutes`（進行中為 null）
 - feeding: `startedAt`、`feedingType`、`amountMl`
 - diapers: `recordedAt`、`type`（URINE / STOOL / CLEAN）
@@ -655,9 +670,11 @@ Sleep / Feeding 頁面額外有 active session banner（`records.find(r => r.end
 - growth: `recordedAt`、`weightKg`、`heightCm`、`headCircumferenceCm`
 
 **Theme helpers**（接收 `dark: boolean`）：
+
 - `rTick(dark)` / `rGrid(dark)` / `rTooltip(dark)` — 回傳 Recharts 元件的 dark-aware props
 
 **共用 timeline primitives**（純 CSS，不使用 Recharts）：
+
 - `TimeStrip` — 相對定位容器，背景軌道 + 6/12/18 小時格線，children 用 `absolute` 定位
 - `TimeAxis` — 0/6/12/18/24 小時標籤列，與 TimeStrip 寬度對齊
 - 使用此組合的圖表：`SleepGanttChart`（睡眠甘特）、`FeedingTimeline`（餵食時間軸）、`ActivityHeatmap`（作息熱力圖）
@@ -666,42 +683,38 @@ Sleep / Feeding 頁面額外有 active session banner（`records.find(r => r.end
 
 **已實作的 9 個圖表**：
 
-| 元件 | 類型 | 說明 |
-|------|------|------|
-| `SleepBarChart` | `BarChart` | 每日睡眠時數，近 7 天 |
-| `SleepGanttChart` | CSS grid | 入睡時段分布，7×24h |
-| `FeedingTimeline` | CSS grid | 餵食時間軸，7×24h，彩色圓點 |
-| `FeedingMlChart` | `BarChart` stacked | 每日瓶餵總量，自訂 tooltip |
-| `DiaperChart` | `LineChart` | 換尿布次數，三條線 |
-| `GrowthChart` | `LineChart` | 成長曲線（無 WHO 參考值，因無出生日期），tab 切換體重/身高/頭圍 |
-| `PumpingChart` | `BarChart` stacked | 擠奶量趨勢，近 14 天，左（rose）/右（purple） |
-| `ActivityHeatmap` | CSS grid | 作息熱力圖，7×24h，藍格=睡眠，圓點=餵食 |
-| `MilkBalanceChart` | `ComposedChart` | 母乳供需，Bar=擠奶（供），Line=瓶餵（需） |
+| 元件                 | 類型                 | 說明                                                            |
+| -------------------- | -------------------- | --------------------------------------------------------------- |
+| `SleepBarChart`    | `BarChart`         | 每日睡眠時數，近 7 天                                           |
+| `SleepGanttChart`  | CSS grid             | 入睡時段分布，7×24h                                            |
+| `FeedingTimeline`  | CSS grid             | 餵食時間軸，7×24h，彩色圓點                                    |
+| `FeedingMlChart`   | `BarChart` stacked | 每日瓶餵總量，自訂 tooltip                                      |
+| `DiaperChart`      | `LineChart`        | 換尿布次數，三條線                                              |
+| `GrowthChart`      | `LineChart`        | 成長曲線（無 WHO 參考值，因無出生日期），tab 切換體重/身高/頭圍 |
+| `PumpingChart`     | `BarChart` stacked | 擠奶量趨勢，近 14 天，左（rose）/右（purple）                   |
+| `ActivityHeatmap`  | CSS grid             | 作息熱力圖，7×24h，藍格=睡眠，圓點=餵食                        |
+| `MilkBalanceChart` | `ComposedChart`    | 母乳供需，Bar=擠奶（供），Line=瓶餵（需）                       |
 
 **進行中睡眠**：`durationMinutes` 為 null 時，duration 以 `(Date.now() - fellAsleepAt) / 3600000` 計算，並 cap 在 `24 - startH` 避免超出當日。
 
 ### 共用元件
 
-| 元件 | 用途 |
-|------|------|
-| `RecordFormModal` | 底部 sheet，接收 `open/onClose/title/onSubmit/submitting/children`；body scroll lock 已內建 |
-| `DateNavigator` | 日期前後切換，今天顯示「今天」，非今天顯示「回到今天」連結 |
-| `SegmentedControl` | 多選一按鈕組（2–4 個選項）；超過 4 個選項改用 `<select>` |
-| `TimeInput` | `datetime-local` 輸入，配合 `nowLocalString()` 預設現在時間 |
-| `RecordList` / `RecordCard` | 通用清單/卡片（DiaperPage、BreastMilkPage 使用） |
-| `EmptyState` | 無資料時的佔位提示 |
-| `FAB` | 固定位置新增按鈕（`fixed bottom-24 right-6`） |
+| 元件                            | 用途                                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------------------- |
+| `RecordFormModal`             | 底部 sheet，接收 `open/onClose/title/onSubmit/submitting/children`；body scroll lock 已內建 |
+| `DateNavigator`               | 日期前後切換，今天顯示「今天」，非今天顯示「回到今天」連結                                    |
+| `SegmentedControl`            | 多選一按鈕組（2–4 個選項）；超過 4 個選項改用 `<select>`                                   |
+| `TimeInput`                   | `datetime-local` 輸入，配合 `nowLocalString()` 預設現在時間                               |
+| `RecordList` / `RecordCard` | 通用清單/卡片（DiaperPage、BreastMilkPage 使用）                                              |
+| `EmptyState`                  | 無資料時的佔位提示                                                                            |
+| `FAB`                         | 固定位置新增按鈕（`fixed bottom-24 right-6`）                                               |
 
 ### dateUtils.js 工具函式
 
-| 函式 | 說明 |
-|------|------|
-| `nowLocalString()` | `datetime-local` input 格式的現在時間字串 |
-| `localDayRange(date)` | 傳入 Date，回傳 `{ from, to }` UTC ISO（本地日 00:00～23:59:59.999） |
-| `isSameLocalDay(a, b)` | 比較兩個 Date 是否同一本地日 |
-| `formatTime(iso)` | HH:mm（zh-TW） |
-| `formatDate(iso)` | 含星期的完整日期（zh-TW） |
-| `formatShortDate(date)` | 月日+星期（zh-TW，用於 DateNavigator） |
-| `timeAgo(iso)` | 剛剛 / X 分鐘前 / X 小時前 / X 天前 |
-| `formatDuration(minutes)` | X 小時 Y 分 |
-| `todayString()` | 含星期的今日完整日期 |
+| 函式                     | 說明                                                                   |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `nowLocalString()`     | `datetime-local` input 格式的現在時間字串                            |
+| `localDayRange(date)`  | 傳入 Date，回傳 `{ from, to }` UTC ISO（本地日 00:00～23:59:59.999） |
+| `isSameLocalDay(a, b)` | 比較兩個 Date 是否同一本地日                                           |
+| `formatTime(iso)`      | HH:mm（zh-TW）                                                         |
+| `formatDate(iso)`      | 含星期的完整日期（zh-TW）                                              |
