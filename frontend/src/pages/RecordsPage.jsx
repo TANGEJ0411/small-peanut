@@ -54,6 +54,15 @@ const RECORD_TYPES = [
     iconColor: 'text-purple-500 dark:text-purple-300',
     icon: '🏷️',
   },
+  {
+    path: '/records/solid-food',
+    label: '副食品紀錄',
+    desc: '食材・食用量・反應',
+    bg: 'bg-lime-50 dark:bg-lime-950',
+    iconBg: 'bg-lime-100 dark:bg-lime-900',
+    iconColor: 'text-lime-500 dark:text-lime-300',
+    icon: '🥣',
+  },
 ]
 
 export default function RecordsPage() {

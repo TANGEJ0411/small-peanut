@@ -10,6 +10,7 @@ import SleepPage from './pages/SleepPage'
 import GrowthPage from './pages/GrowthPage'
 import StatusTagPage from './pages/StatusTagPage'
 import FeedingPage from './pages/FeedingPage'
+import SolidFoodPage from './pages/SolidFoodPage'
 import AnalysisPage from './pages/AnalysisPage'
 import HealthPage from './pages/HealthPage'
 import SettingsPage from './pages/SettingsPage'
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/records/diapers" element={<DiaperPage />} />
             <Route path="/records/growth" element={<GrowthPage />} />
             <Route path="/records/tags" element={<StatusTagPage />} />
+            <Route path="/records/solid-food" element={<SolidFoodPage />} />
             <Route path="/analysis" element={<AnalysisPage />} />
             <Route path="/health" element={<HealthPage />} />
             <Route path="/settings" element={<SettingsPage />} />
