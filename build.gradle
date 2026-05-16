@@ -65,7 +65,7 @@ tasks.register('copyFrontend', Copy) {
     into layout.buildDirectory.dir("resources/main/static")
 }
 
-// Only bundle frontend when building JAR; dev uses Vite directly
-tasks.named('bootJar') {
+// processResources 依賴 copyFrontend，所有下游 task 自動排序正確
+tasks.named('processResources') {
     dependsOn 'copyFrontend'
 }
