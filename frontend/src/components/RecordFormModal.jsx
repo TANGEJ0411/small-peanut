@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export default function RecordFormModal({ open, onClose, title, onSubmit, submitting, children }) {
+  const dragStartY = useRef(null)
+
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -12,7 +14,15 @@ export default function RecordFormModal({ open, onClose, title, onSubmit, submit
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl max-h-[92vh] overflow-y-auto shadow-xl">
-        <div className="flex justify-center pt-3 pb-1">
+        <div
+          className="flex justify-center py-3 cursor-grab"
+          style={{ touchAction: 'none' }}
+          onTouchStart={e => { dragStartY.current = e.touches[0].clientY }}
+          onTouchEnd={e => {
+            if (dragStartY.current !== null && e.changedTouches[0].clientY - dragStartY.current > 80) onClose()
+            dragStartY.current = null
+          }}
+        >
           <div className="w-10 h-1 bg-gray-200 dark:bg-gray-600 rounded-full" />
         </div>
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">

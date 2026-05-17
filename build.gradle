@@ -37,6 +37,22 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+// ── .env loader for bootRun ───────────────────────────────────────────────────
+tasks.named('bootRun') {
+    def envFile = rootProject.file('.env')
+    if (envFile.exists()) {
+        envFile.readLines().each { line ->
+            def trimmed = line.trim()
+            if (!trimmed.startsWith('#') && trimmed.contains('=')) {
+                def idx = trimmed.indexOf('=')
+                def key = trimmed.substring(0, idx).trim()
+                def value = trimmed.substring(idx + 1).trim()
+                environment(key, value)
+            }
+        }
+    }
+}
+
 // ── Frontend build ────────────────────────────────────────────────────────────
 def frontendDir = "$projectDir/frontend"
 def npmCmd = System.getProperty('os.name').toLowerCase().contains('windows')

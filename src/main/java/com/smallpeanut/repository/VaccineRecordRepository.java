@@ -1,5 +1,6 @@
 package com.smallpeanut.repository;
 
+import com.smallpeanut.model.HealthEventStatus;
 import com.smallpeanut.model.VaccineRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.LocalDateTime;
@@ -11,4 +12,7 @@ public interface VaccineRecordRepository extends JpaRepository<VaccineRecord, Lo
 
     List<VaccineRecord> findAllByAdministeredAtBetweenOrderByAdministeredAtDesc(
             LocalDateTime from, LocalDateTime to);
+
+    List<VaccineRecord> findByStatusAndAdministeredAtBetween(
+            HealthEventStatus status, LocalDateTime from, LocalDateTime to);
 }

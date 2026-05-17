@@ -10,5 +10,6 @@ public record MedicalVisitResponse(
         String diagnosis,
         Instant visitedAt,
         String notes,
-        Instant createdAt
+        Instant createdAt,
+        String status
 ) {}

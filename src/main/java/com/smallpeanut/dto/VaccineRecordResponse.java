@@ -9,5 +9,6 @@ public record VaccineRecordResponse(
         String batchNumber,
         Instant administeredAt,
         String notes,
-        Instant createdAt
+        Instant createdAt,
+        String status
 ) {}

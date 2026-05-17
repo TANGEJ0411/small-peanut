@@ -225,9 +225,9 @@ function fmtHour(h) {
 function ChartCard({ title, note, children }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="mb-3">
         <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{title}</p>
-        {note && <p className="text-xs text-gray-400 dark:text-gray-500">{note}</p>}
+        {note && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{note}</p>}
       </div>
       {children}
     </div>
@@ -658,11 +658,11 @@ function SolidFoodMilkChart({ data, dark }) {
 
   return (
     <ResponsiveContainer width="100%" height={210}>
-      <ComposedChart data={data} margin={{ top: 4, right: 40, bottom: 0, left: -8 }}>
+      <ComposedChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
         <CartesianGrid {...rGrid(dark)} />
         <XAxis dataKey="day" tick={rTick(dark)} interval={1} />
-        <YAxis yAxisId="milk"  tick={rTick(dark)} unit=" ml" domain={[0, 'auto']} />
-        <YAxis yAxisId="solid" orientation="right" tick={rTick(dark)} unit=" g" domain={[0, 'auto']} />
+        <YAxis yAxisId="milk"  tick={rTick(dark)} unit="ml" domain={[0, 'auto']} width={36} />
+        <YAxis yAxisId="solid" orientation="right" tick={rTick(dark)} unit="g" domain={[0, 'auto']} width={28} />
         <Tooltip content={<CustomTooltip />} />
         <Legend
           iconSize={8}

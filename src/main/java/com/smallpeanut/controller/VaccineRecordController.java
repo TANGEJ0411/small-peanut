@@ -33,6 +33,16 @@ public class VaccineRecordController {
         return service.create(request);
     }
 
+    @PatchMapping("/{id}/complete")
+    public VaccineRecordResponse complete(@PathVariable Long id) {
+        return service.complete(id);
+    }
+
+    @PatchMapping("/{id}/revert")
+    public VaccineRecordResponse revert(@PathVariable Long id) {
+        return service.revert(id);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

@@ -26,6 +26,10 @@ public class VaccineRecord {
 
     private String notes;
 
+    @Enumerated(EnumType.STRING)
+    @Column(columnDefinition = "VARCHAR(20) DEFAULT 'COMPLETED'", nullable = false)
+    private HealthEventStatus status = HealthEventStatus.COMPLETED;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

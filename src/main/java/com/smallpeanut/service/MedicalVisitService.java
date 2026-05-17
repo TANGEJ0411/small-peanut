@@ -2,8 +2,10 @@ package com.smallpeanut.service;
 
 import com.smallpeanut.dto.MedicalVisitRequest;
 import com.smallpeanut.dto.MedicalVisitResponse;
+import com.smallpeanut.model.HealthEventStatus;
 import com.smallpeanut.model.MedicalVisitRecord;
 import com.smallpeanut.repository.MedicalVisitRepository;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.Instant;
@@ -35,8 +37,25 @@ public class MedicalVisitService {
         record.setDoctor(request.doctor());
         record.setReason(request.reason());
         record.setDiagnosis(request.diagnosis());
-        record.setVisitedAt(LocalDateTime.ofInstant(request.visitedAt(), ZoneOffset.UTC));
+        LocalDateTime visitedAt = LocalDateTime.ofInstant(request.visitedAt(), ZoneOffset.UTC);
+        record.setVisitedAt(visitedAt);
         record.setNotes(request.notes());
+        record.setStatus(visitedAt.isAfter(LocalDateTime.now(ZoneOffset.UTC))
+                ? HealthEventStatus.PLANNED : HealthEventStatus.COMPLETED);
+        return toResponse(repository.save(record));
+    }
+
+    public MedicalVisitResponse complete(Long id) {
+        MedicalVisitRecord record = repository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("MedicalVisitRecord not found: " + id));
+        record.setStatus(HealthEventStatus.COMPLETED);
+        return toResponse(repository.save(record));
+    }
+
+    public MedicalVisitResponse revert(Long id) {
+        MedicalVisitRecord record = repository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("MedicalVisitRecord not found: " + id));
+        record.setStatus(HealthEventStatus.PLANNED);
         return toResponse(repository.save(record));
     }
 
@@ -48,7 +67,8 @@ public class MedicalVisitService {
         return new MedicalVisitResponse(
                 r.getId(), r.getClinicName(), r.getDoctor(), r.getReason(), r.getDiagnosis(),
                 r.getVisitedAt().toInstant(ZoneOffset.UTC),
-                r.getNotes(), r.getCreatedAt().toInstant(ZoneOffset.UTC)
+                r.getNotes(), r.getCreatedAt().toInstant(ZoneOffset.UTC),
+                r.getStatus().name()
         );
     }
 }

@@ -1,5 +1,6 @@
 package com.smallpeanut.repository;
 
+import com.smallpeanut.model.HealthEventStatus;
 import com.smallpeanut.model.MedicalVisitRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.LocalDateTime;
@@ -11,4 +12,7 @@ public interface MedicalVisitRepository extends JpaRepository<MedicalVisitRecord
 
     List<MedicalVisitRecord> findAllByVisitedAtBetweenOrderByVisitedAtDesc(
             LocalDateTime from, LocalDateTime to);
+
+    List<MedicalVisitRecord> findByStatusAndVisitedAtBetween(
+            HealthEventStatus status, LocalDateTime from, LocalDateTime to);
 }

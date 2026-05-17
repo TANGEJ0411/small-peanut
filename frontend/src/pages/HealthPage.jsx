@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import RecordFormModal from '../components/RecordFormModal'
 import TimeInput from '../components/TimeInput'
 import { nowLocalString, formatTime } from '../utils/dateUtils'
@@ -34,9 +34,9 @@ const MEAL_SLOT_LABELS = Object.fromEntries(MEAL_SLOT_OPTIONS.map(o => [o.value,
 const WEEK_DAYS = ['日', '一', '二', '三', '四', '五', '六']
 
 const EVENT_COLORS = {
-  med: { dot: 'bg-blue-500', icon: '💊' },
-  vaccine: { dot: 'bg-green-500', icon: '💉' },
-  visit: { dot: 'bg-orange-500', icon: '🏥' },
+  med: { dot: 'bg-blue-500', plannedDot: 'border-2 border-blue-500', icon: '💊' },
+  vaccine: { dot: 'bg-green-500', plannedDot: 'border-2 border-green-500', icon: '💉' },
+  visit: { dot: 'bg-orange-500', plannedDot: 'border-2 border-orange-500', icon: '🏥' },
 }
 
 const FILTER_OPTIONS = [
@@ -82,6 +82,26 @@ function dayDefaultTime(year, month, day) {
 const inputClass = 'block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
 const selectClass = `${inputClass} cursor-pointer`
 
+function buildPendingMedEvents(schedules, records, year, month) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const result = {}
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const dayRecords = records.filter(r => toLocalDateKey(r.administeredAt) === dateKey)
+    const recordedScheduleIds = new Set(dayRecords.map(r => r.scheduleId).filter(id => id != null))
+    for (const schedule of schedules) {
+      if (!schedule.active) continue
+      if (schedule.timingType !== 'MEAL_BASED') continue
+      if (schedule.startDate > dateKey) continue
+      if (schedule.endDate && schedule.endDate < dateKey) continue
+      if (recordedScheduleIds.has(schedule.id)) continue
+      if (!result[dateKey]) result[dateKey] = []
+      result[dateKey].push({ scheduleId: schedule.id, scheduleName: schedule.name })
+    }
+  }
+  return result
+}
+
 export default function HealthPage() {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -100,6 +120,7 @@ export default function HealthPage() {
   const [vaccineForm, setVaccineForm] = useState(null)
   const [visitForm, setVisitForm] = useState(null)
   const [scheduleForm, setScheduleForm] = useState(null)
+  const sheetDragY = useRef(null)
 
   const fetchData = useCallback(async () => {
     const firstDay = new Date(year, month, 1)
@@ -129,16 +150,21 @@ export default function HealthPage() {
 
   const eventsByDate = useMemo(() => {
     const map = {}
-    const add = (isoStr, type, data) => {
+    const add = (isoStr, type, data, planned = false, isPending = false) => {
       const key = toLocalDateKey(isoStr)
       if (!map[key]) map[key] = []
-      map[key].push({ type, data })
+      map[key].push({ type, data, planned, isPending })
     }
-    medRecords.forEach(r => add(r.administeredAt, 'med', r))
-    vaccineRecords.forEach(r => add(r.administeredAt, 'vaccine', r))
-    visitRecords.forEach(r => add(r.visitedAt, 'visit', r))
+    medRecords.forEach(r => add(r.administeredAt, 'med', r, false, false))
+    vaccineRecords.forEach(r => add(r.administeredAt, 'vaccine', r, r.status === 'PLANNED', false))
+    visitRecords.forEach(r => add(r.visitedAt, 'visit', r, r.status === 'PLANNED', false))
+    const pendingMeds = buildPendingMedEvents(schedules, medRecords, year, month)
+    Object.entries(pendingMeds).forEach(([dateKey, items]) => {
+      if (!map[dateKey]) map[dateKey] = []
+      items.forEach(item => map[dateKey].push({ type: 'med', data: item, planned: true, isPending: true }))
+    })
     return map
-  }, [medRecords, vaccineRecords, visitRecords])
+  }, [medRecords, vaccineRecords, visitRecords, schedules, year, month])
 
   const pad = n => String(n).padStart(2, '0')
   const selectedDateKey = selectedDay
@@ -306,6 +332,43 @@ export default function HealthPage() {
 
   const weeks = buildCalendarWeeks(year, month)
   const todayKey = todayLocalDate()
+  const isSelectedDayPastOrToday = selectedDateKey !== null && selectedDateKey <= todayKey
+
+  async function completeEvent(type, id) {
+    const ep = { vaccine: 'vaccines', visit: 'medical-visits' }
+    const res = await fetch(`/api/v1/${ep[type]}/${id}/complete`, { method: 'PATCH' })
+    if (res.ok) {
+      if (type === 'vaccine') {
+        setVaccineRecords(prev => prev.map(r => r.id === id ? { ...r, status: 'COMPLETED' } : r))
+      } else {
+        setVisitRecords(prev => prev.map(r => r.id === id ? { ...r, status: 'COMPLETED' } : r))
+      }
+    }
+  }
+
+  async function revertEvent(type, id) {
+    const ep = { vaccine: 'vaccines', visit: 'medical-visits' }
+    const res = await fetch(`/api/v1/${ep[type]}/${id}/revert`, { method: 'PATCH' })
+    if (res.ok) {
+      if (type === 'vaccine') {
+        setVaccineRecords(prev => prev.map(r => r.id === id ? { ...r, status: 'PLANNED' } : r))
+      } else {
+        setVisitRecords(prev => prev.map(r => r.id === id ? { ...r, status: 'PLANNED' } : r))
+      }
+    }
+  }
+
+  async function completePendingMed(scheduleId) {
+    const body = { scheduleId, administeredAt: new Date().toISOString() }
+    const res = await fetch('/api/v1/medication-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      const newRecord = await res.json()
+      setMedRecords(prev => [...prev, newRecord])
+    }
+  }
 
   function scheduleTimingLabel(s) {
     if (s.timingType === 'MEAL_BASED') {
@@ -410,7 +473,7 @@ export default function HealthPage() {
                   </span>
                   <div className="flex gap-0.5 h-2 items-center mt-0.5">
                     {dots.map((e, j) => (
-                      <div key={j} className={`w-1.5 h-1.5 rounded-full ${EVENT_COLORS[e.type].dot} ${isSelected ? 'opacity-75' : ''}`} />
+                      <div key={j} className={`w-1.5 h-1.5 rounded-full ${e.planned ? EVENT_COLORS[e.type].plannedDot : EVENT_COLORS[e.type].dot} ${isSelected ? 'opacity-75' : ''}`} />
                     ))}
                     {extra > 0 && (
                       <span className={`text-[8px] leading-none font-medium ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>+{extra}</span>
@@ -446,28 +509,52 @@ export default function HealthPage() {
             <div className="divide-y divide-gray-50 dark:divide-gray-700">
               {selectedDayEvents.map((e, i) => {
                 const c = EVENT_COLORS[e.type]
-                const title = e.type === 'med'
-                  ? `${e.data.name}${e.data.dosage ? ` ${e.data.dosage}` : ''}`
+                const isPending = e.isPending
+                const title = isPending ? e.data.scheduleName
+                  : e.type === 'med' ? `${e.data.name}${e.data.dosage ? ` ${e.data.dosage}` : ''}`
                   : e.type === 'vaccine' ? e.data.name : e.data.reason
-                const subtitle = e.type === 'med'
-                  ? [ROUTE_LABELS[e.data.route], e.data.mealSlot ? MEAL_SLOT_LABELS[e.data.mealSlot] : null].filter(Boolean).join(' • ')
+                const subtitle = isPending ? '待辦用藥'
+                  : e.type === 'med' ? [ROUTE_LABELS[e.data.route], e.data.mealSlot ? MEAL_SLOT_LABELS[e.data.mealSlot] : null].filter(Boolean).join(' • ')
                   : e.type === 'vaccine' ? (e.data.clinicName || '') : [e.data.clinicName, e.data.doctor].filter(Boolean).join(' • ')
-                const time = e.type === 'visit'
-                  ? formatTime(e.data.visitedAt) : formatTime(e.data.administeredAt)
+                const time = isPending ? null
+                  : e.type === 'visit' ? formatTime(e.data.visitedAt) : formatTime(e.data.administeredAt)
                 return (
                   <div key={i} className="flex items-center gap-3 px-4 py-3">
                     <span className="text-xl flex-shrink-0">{c.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{title}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{title}</p>
+                        {e.planned && !isPending && (
+                          <span className="flex-shrink-0 text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">預約</span>
+                        )}
+                      </div>
                       {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>}
                     </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{time}</span>
-                    <button
-                      onClick={() => deleteEvent(e.type, e.data.id)}
-                      className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-red-400 transition-colors"
-                    >
-                      ✕
-                    </button>
+                    {time && <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{time}</span>}
+                    {(isPending || e.planned) && isSelectedDayPastOrToday && (
+                      <button
+                        onClick={() => isPending ? completePendingMed(e.data.scheduleId) : completeEvent(e.type, e.data.id)}
+                        className="min-h-[44px] px-2 text-xs font-medium text-green-600 dark:text-green-400 flex-shrink-0"
+                      >
+                        完成
+                      </button>
+                    )}
+                    {!isPending && !e.planned && (e.type === 'vaccine' || e.type === 'visit') && (
+                      <button
+                        onClick={() => revertEvent(e.type, e.data.id)}
+                        className="min-h-[44px] px-2 text-xs font-medium text-amber-600 dark:text-amber-400 flex-shrink-0"
+                      >
+                        復原
+                      </button>
+                    )}
+                    {!isPending && (
+                      <button
+                        onClick={() => deleteEvent(e.type, e.data.id)}
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-red-400 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 )
               })}
@@ -489,14 +576,24 @@ export default function HealthPage() {
       {activeModal === 'addMenu' && (
         <div className="fixed inset-0 z-50 flex items-end" onClick={() => setActiveModal(null)}>
           <div className="w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="w-12 h-1 bg-gray-200 dark:bg-gray-600 rounded-full mx-auto mt-3 mb-2" />
+            <div
+              className="flex justify-center py-3 cursor-grab"
+              style={{ touchAction: 'none' }}
+              onTouchStart={e => { sheetDragY.current = e.touches[0].clientY }}
+              onTouchEnd={e => {
+                if (sheetDragY.current !== null && e.changedTouches[0].clientY - sheetDragY.current > 80) setActiveModal(null)
+                sheetDragY.current = null
+              }}
+            >
+              <div className="w-12 h-1 bg-gray-200 dark:bg-gray-600 rounded-full" />
+            </div>
             <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 px-5 mb-1 uppercase tracking-wider">
               {selectedDayLabel()} 新增
             </p>
             {[
               { icon: '💊', label: '用藥紀錄', action: openMedForm },
-              { icon: '💉', label: '疫苗紀錄', action: openVaccineForm },
-              { icon: '🏥', label: '就醫紀錄', action: openVisitForm },
+              { icon: '💉', label: '疫苗預約', action: openVaccineForm },
+              { icon: '🏥', label: '就醫預約', action: openVisitForm },
             ].map(item => (
               <button
                 key={item.label}
@@ -577,7 +674,7 @@ export default function HealthPage() {
 
       {/* Vaccine form */}
       {activeModal === 'vaccine' && vaccineForm && (
-        <RecordFormModal open title="新增疫苗紀錄" onClose={() => setActiveModal(null)} onSubmit={submitVaccine} submitting={submitting}>
+        <RecordFormModal open title="新增疫苗預約" onClose={() => setActiveModal(null)} onSubmit={submitVaccine} submitting={submitting}>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">疫苗名稱 <span className="text-red-500">*</span></label>
             <input type="text" placeholder="例：BCG 卡介苗" value={vaccineForm.name} onChange={e => setVac('name')(e.target.value)} className={inputClass} />
@@ -605,7 +702,7 @@ export default function HealthPage() {
 
       {/* Medical visit form */}
       {activeModal === 'visit' && visitForm && (
-        <RecordFormModal open title="新增就醫紀錄" onClose={() => setActiveModal(null)} onSubmit={submitVisit} submitting={submitting}>
+        <RecordFormModal open title="新增就醫預約" onClose={() => setActiveModal(null)} onSubmit={submitVisit} submitting={submitting}>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">就醫原因 <span className="text-red-500">*</span></label>
             <input type="text" placeholder="例：發燒、咳嗽" value={visitForm.reason} onChange={e => setVis('reason')(e.target.value)} className={inputClass} />
@@ -640,7 +737,17 @@ export default function HealthPage() {
       {activeModal === 'schedules' && (
         <div className="fixed inset-0 z-50 flex items-end" onClick={() => setActiveModal(null)}>
           <div className="w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="w-12 h-1 bg-gray-200 dark:bg-gray-600 rounded-full mx-auto mt-3" />
+            <div
+              className="flex justify-center py-3 cursor-grab"
+              style={{ touchAction: 'none' }}
+              onTouchStart={e => { sheetDragY.current = e.touches[0].clientY }}
+              onTouchEnd={e => {
+                if (sheetDragY.current !== null && e.changedTouches[0].clientY - sheetDragY.current > 80) setActiveModal(null)
+                sheetDragY.current = null
+              }}
+            >
+              <div className="w-12 h-1 bg-gray-200 dark:bg-gray-600 rounded-full" />
+            </div>
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white">用藥計畫</h3>
               <button onClick={openAddSchedule} className="text-sm text-blue-600 dark:text-blue-400 font-medium min-h-[44px] px-1">

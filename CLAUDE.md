@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 育嬰紀錄 Web App，行動端優先。Spring Boot 3.4.5 (Java 21) 在專案根目錄，React 19 + Tailwind CSS 3 在 `frontend/` 子目錄。
 
-**目前開發階段：Phase 1 MVP 已完成；Phase 2 資料分析圖表（含真實 API 接入）已完成；健康管理（用藥/疫苗/就醫）已完成。**
+**目前開發階段：Phase 1 MVP 已完成；Phase 2 資料分析圖表（含真實 API 接入）已完成；健康管理（用藥/疫苗/就醫）已完成；LINE Bot 推播通知（用藥提醒、母奶到期、預約摘要、一小時前提醒）已完成；健康月曆行事曆（PLANNED/COMPLETED 狀態、待辦用藥事件、完成/復原互動）已完成。**
 Phase 3（JWT 安全、CSV/PDF 匯出、S3 照片儲存）已確認不做。
 
 ---
@@ -17,7 +17,7 @@ Phase 3（JWT 安全、CSV/PDF 匯出、S3 照片儲存）已確認不做。
 # 資料庫（Docker，須先啟動才能跑後端）
 docker compose up -d          # MySQL 8.0，port 3306，DB 名稱 small_peanut
 
-# 後端（port 8080）
+# 後端（port 8080）— 自動載入 .env 檔（build.gradle 已設定）
 ./gradlew bootRun
 
 # 前端（port 5173，/api 自動 proxy 到 8080）
@@ -31,7 +31,15 @@ cd frontend && npm run lint
 # 生產打包（npmInstall → buildFrontend → copyFrontend → bootJar 自動串接）
 ./gradlew build
 java -jar build/libs/small-peanut-*.jar
+
+# 僅後端有異動時（跳過前端 build，速度快）
+./gradlew bootJar -x buildFrontend -x npmInstall
+
+# Docker 生產部署
+docker compose -f docker-compose.prod.yml up -d --build app
 ```
+
+**注意：** 目前 Node.js 20.11.0 與 Vite 不相容（需要 20.19+ 或 22.12+），`npm run build` 會失敗。前端 dev server 正常，生產部署需升級 Node.js 或只做後端改動時用 `-x buildFrontend` 跳過。
 
 ---
 
@@ -503,8 +511,15 @@ service/      業務邏輯，包含 toResponse() 轉換
 | `/api/v1/medication-schedules`             | GET / POST / DELETE `/{id}` | 用藥計畫                                                        |
 | `/api/v1/medication-schedules/{id}/toggle` | PATCH                         | 切換計畫啟用/停用                                               |
 | `/api/v1/medication-records`               | GET / POST / DELETE `/{id}` | 實際用藥紀錄                                                    |
-| `/api/v1/vaccines`                         | GET / POST / DELETE `/{id}` | 疫苗紀錄                                                        |
-| `/api/v1/medical-visits`                   | GET / POST / DELETE `/{id}` | 就醫紀錄                                                        |
+| `/api/v1/vaccines`                         | GET / POST / DELETE `/{id}` | 疫苗預約（PLANNED）/ 紀錄（COMPLETED）                          |
+| `/api/v1/vaccines/{id}/complete`           | PATCH                       | 將疫苗事件標記為 COMPLETED                                      |
+| `/api/v1/vaccines/{id}/revert`             | PATCH                       | 將疫苗事件復原為 PLANNED                                        |
+| `/api/v1/medical-visits`                   | GET / POST / DELETE `/{id}` | 就醫預約（PLANNED）/ 紀錄（COMPLETED）                          |
+| `/api/v1/medical-visits/{id}/complete`     | PATCH                       | 將就醫事件標記為 COMPLETED                                      |
+| `/api/v1/medical-visits/{id}/revert`       | PATCH                       | 將就醫事件復原為 PLANNED                                        |
+| `/api/v1/settings`                         | GET / PUT                   | App 設定（LINE 群組綁定狀態、通知開關）                         |
+| `/api/v1/settings/line-group`              | DELETE                      | 解除 LINE 群組綁定                                              |
+| `/api/v1/line/webhook`                     | POST                        | LINE Messaging API Webhook（HMAC-SHA256 簽章驗證）              |
 
 **日期篩選：** GET 端點（`/pumping/storage`、`/growth`、`/dashboard`、`/medication-schedules` 除外）均支援 `?from=<ISO>&to=<ISO>` UTC 時間範圍查詢。不帶參數時回傳全部資料。
 
@@ -515,6 +530,20 @@ service/      業務邏輯，包含 toResponse() 轉換
 **Active Session**（睡眠/餵食）：POST 時結束時間可 null，PATCH `/{id}/wake` 或 `/{id}/end` 補填，後端用 `ChronoUnit.MINUTES.between()` 計算 `durationMinutes`。
 
 **健康管理（用藥）**：`MedicationSchedule`（計畫）與 `MedicationRecord`（服藥 log）分離。計畫的 `mealSlots` 用 `@ElementCollection(fetch=EAGER)`。建立紀錄時若提供 `scheduleId`，service 自動從計畫複製 name/dosage/route，確保計畫刪除後紀錄仍完整。`DashboardService.buildUpcomingMedications()` 比對今日計畫與紀錄，產生待服藥清單。
+
+**疫苗/就醫 PLANNED/COMPLETED 模式**：`VaccineRecord` 與 `MedicalVisitRecord` 均有 `HealthEventStatus status`（DB DEFAULT `'COMPLETED'` 確保舊資料 migration 安全）。建立時依 `administeredAt`/`visitedAt` 與 `LocalDateTime.now(UTC)` 比較自動設定：未來時間 → PLANNED，過去時間 → COMPLETED。`PATCH /{id}/complete` 將 status 改為 COMPLETED；`PATCH /{id}/revert` 將 status 改回 PLANNED（供誤點復原）。DTO 的 `String status` 欄位回傳 `.name()`；前端依此控制圓點樣式、「完成」與「復原」按鈕顯示。
+
+**AppSettings Singleton**：`app_settings` 表只存一筆（`id = 1L`）。`AppSettingsService.getOrCreate()` 用 `findById(1L).orElseGet(() -> save(new AppSettings()))` 取得設定。儲存 `lineGroupId`（LINE 群組綁定）與兩個通知開關。
+
+**LINE Bot 推播通知**：不使用 LINE Bot SDK，改用 `RestTemplate` 直打 `https://api.line.me/v2/bot/message/push`。Webhook 收到群組 MessageEvent 時提取 `groupId` 存入 `AppSettings`（非群組訊息忽略）。簽章驗證用 HMAC-SHA256（手動實作）。排程任務在 `NotificationScheduler`，以 `zone = "Asia/Taipei"` 確保台灣時間正確：
+- 08:00：早餐用藥提醒（BEFORE/AFTER_BREAKFAST）+ 母奶到期提醒 + 當天預約摘要（PLANNED 疫苗/就醫 + 活躍 MEAL_BASED 計畫）
+- 12:00：午餐用藥提醒（BEFORE/AFTER_LUNCH）
+- 18:00：晚餐用藥提醒（BEFORE/AFTER_DINNER）
+- 21:00：睡前用藥提醒（BEFORE_SLEEP）
+- 每小時整點：掃描今日 PLANNED 事件，找時間在 (now, now+60min] 的記錄推播一小時前提醒；用 in-memory `Set<Long> sentVaccineReminderIds / sentVisitReminderIds` 去重（同一天內同一筆記錄只推一次）
+- 00:00：清空兩個去重 Set（每日重置）
+
+母奶通知包含 `#XXX` 編號（`String.format("%03d", id)`），與前端 `batchNo()` 函式一致。環境變數：`LINE_CHANNEL_ACCESS_TOKEN`、`LINE_CHANNEL_SECRET`（`.env` 由 `build.gradle bootRun` task 自動載入；`docker-compose.prod.yml` 的 `app` service 也已設定）。
 
 ---
 
@@ -553,16 +582,15 @@ FAB fixed bottom-24 right-6   各紀錄頁的新增按鈕
 
 ### HealthPage 月曆架構
 
-`activeModal` string state 控制所有彈窗（`null / 'addMenu' / 'medRecord' / 'vaccine' / 'visit' / 'schedules' / 'addSchedule'`）。月份切換一次 fetch 整月三類資料 + 全部計畫。`eventsByDate` 用 `useMemo` 依本地日期 key 分組三類紀錄（💊藍 / 💉綠 / 🏥橘）。
+`activeModal` string state 控制所有彈窗（`null / 'addMenu' / 'medRecord' / 'vaccine' / 'visit' / 'schedules' / 'addSchedule'`）。月份切換一次 fetch 整月三類資料 + 全部計畫。`eventsByDate` 用 `useMemo` 依本地日期 key 分組三類紀錄（💊藍 / 💉綠 / 🏥橘），事件物件含 `planned: boolean`（PLANNED 狀態）與 `isPending: boolean`（用藥待辦）。`buildPendingMedEvents()` 純函式計算活躍 MEAL_BASED 計畫當月尚未記錄的待辦日期，合併入 `eventsByDate`。
 
 ### AnalysisPage 圖表架構
 
 並行 fetch 5 支 API → `buildChartData()` 統一轉換 → `chartData` state。9 個圖表分 Recharts（BarChart/LineChart/ComposedChart）和純 CSS timeline 兩種。`rTick/rGrid/rTooltip(dark)` 提供 dark-aware props。
 
-### Phase 2 剩餘待開發功能
+### 尚未實作的功能
 
 - 計時器（親餵/擠奶/睡眠計時，結束後自動帶入表單）
-- 副食品紀錄
 - PWA 支援（安裝至桌面、離線快取）
 - 多人即時同步（SSE）
 - AI 週趨勢摘要
@@ -643,10 +671,14 @@ Sleep / Feeding 頁面額外有 active session banner（`records.find(r => r.end
 
 - 以 `year`/`month` state 控制檢視月份，`selectedDay`（數字）控制選中日
 - 月份切換時一次 fetch 整月的三類資料（medication-records、vaccines、medical-visits）+ 全部 medication-schedules
-- `eventsByDate`（`useMemo`）將三類紀錄依本地日期 key（`YYYY-MM-DD`）分組；local date 轉換用 `new Date(isoStr)` 取 getFullYear/getMonth/getDate（不用 UTC date）
-- 月曆格子顯示最多 3 個彩色圓點（💊藍/💉綠/🏥橘），超過顯示 `+n`
+- `eventsByDate`（`useMemo`）將三類紀錄依本地日期 key（`YYYY-MM-DD`）分組；事件物件結構：`{ type: 'med'|'vaccine'|'visit', data, planned: boolean, isPending: boolean }`
+  - `planned`：疫苗/就醫的 `status === 'PLANNED'`；用藥待辦 isPending 也為 true
+  - `isPending`：從 `buildPendingMedEvents()` 計算的 MEAL_BASED 未記錄待辦；data 結構為 `{ scheduleId, scheduleName }`，與實際 record 不同
+- 月曆圓點：`planned` → 空心圓框（`border-2 border-{color}`）；已完成 → 實心圓點
+- 事件 detail panel：PLANNED 事件且日期 ≤ 今天 → 顯示「完成」按鈕；疫苗/就醫呼叫 `PATCH /{id}/complete` 更新本地 state；用藥待辦呼叫 `POST /medication-records` 後 useMemo 自動重算移除；COMPLETED 的疫苗/就醫事件顯示「復原」按鈕（amber 色），呼叫 `PATCH /{id}/revert` 將 status 改回 PLANNED
+- `sheetDragY` ref（`useRef`）供 addMenu / schedules 兩個 inline sheet 的 pill handle 偵測下拉關閉（80px threshold）
 - `activeModal` 用單一 string state 控制所有彈窗（`null / 'addMenu' / 'medRecord' / 'vaccine' / 'visit' / 'schedules' / 'addSchedule'`），不拆成多個 boolean
-- 「管理用藥計畫」入口在頁面右上角，開啟底部 sheet 列出所有計畫（含啟用/停用切換、刪除）
+- 「管理用藥計畫」入口在頁面右上角；疫苗/就醫新增按鈕標籤為「疫苗預約」/「就醫預約」
 
 ### AnalysisPage 圖表架構
 
@@ -679,21 +711,22 @@ Sleep / Feeding 頁面額外有 active session banner（`records.find(r => r.end
 - `TimeAxis` — 0/6/12/18/24 小時標籤列，與 TimeStrip 寬度對齊
 - 使用此組合的圖表：`SleepGanttChart`（睡眠甘特）、`FeedingTimeline`（餵食時間軸）、`ActivityHeatmap`（作息熱力圖）
 
-**ChartCard** — 統一卡片外框，接收 `title / note / children`。
+**ChartCard** — 統一卡片外框，接收 `title / note / children`。`title` 與 `note` 垂直堆疊（title 粗體，note 在下方 `mt-0.5` 灰色小字），不再並排以避免長 note 換行。
 
-**已實作的 9 個圖表**：
+**已實作的 10 個圖表**：
 
-| 元件                 | 類型                 | 說明                                                            |
-| -------------------- | -------------------- | --------------------------------------------------------------- |
-| `SleepBarChart`    | `BarChart`         | 每日睡眠時數，近 7 天                                           |
-| `SleepGanttChart`  | CSS grid             | 入睡時段分布，7×24h                                            |
-| `FeedingTimeline`  | CSS grid             | 餵食時間軸，7×24h，彩色圓點                                    |
-| `FeedingMlChart`   | `BarChart` stacked | 每日瓶餵總量，自訂 tooltip                                      |
-| `DiaperChart`      | `LineChart`        | 換尿布次數，三條線                                              |
-| `GrowthChart`      | `LineChart`        | 成長曲線（無 WHO 參考值，因無出生日期），tab 切換體重/身高/頭圍 |
-| `PumpingChart`     | `BarChart` stacked | 擠奶量趨勢，近 14 天，左（rose）/右（purple）                   |
-| `ActivityHeatmap`  | CSS grid             | 作息熱力圖，7×24h，藍格=睡眠，圓點=餵食                        |
-| `MilkBalanceChart` | `ComposedChart`    | 母乳供需，Bar=擠奶（供），Line=瓶餵（需）                       |
+| 元件                   | 類型                 | 說明                                                            |
+| ---------------------- | -------------------- | --------------------------------------------------------------- |
+| `SleepBarChart`      | `BarChart`         | 每日睡眠時數，近 7 天                                           |
+| `SleepGanttChart`    | CSS grid             | 入睡時段分布，7×24h                                            |
+| `FeedingTimeline`    | CSS grid             | 餵食時間軸，7×24h，彩色圓點                                    |
+| `FeedingMlChart`     | `BarChart` stacked | 每日瓶餵總量，自訂 tooltip                                      |
+| `DiaperChart`        | `LineChart`        | 換尿布次數，三條線                                              |
+| `GrowthChart`        | `LineChart`        | 成長曲線（無 WHO 參考值，因無出生日期），tab 切換體重/身高/頭圍 |
+| `PumpingChart`       | `BarChart` stacked | 擠奶量趨勢，近 14 天，左（rose）/右（purple）                   |
+| `ActivityHeatmap`    | CSS grid             | 作息熱力圖，7×24h，藍格=睡眠，圓點=餵食                        |
+| `MilkBalanceChart`   | `ComposedChart`    | 母乳供需，Bar=擠奶（供），Line=瓶餵（需）                       |
+| `SolidFoodMilkChart` | `ComposedChart`    | 副食品 vs 奶量，Bar=喝奶（左 Y 軸 ml），Line=副食品（右 Y 軸 g） |
 
 **進行中睡眠**：`durationMinutes` 為 null 時，duration 以 `(Date.now() - fellAsleepAt) / 3600000` 計算，並 cap 在 `24 - startH` 避免超出當日。
 
@@ -701,7 +734,7 @@ Sleep / Feeding 頁面額外有 active session banner（`records.find(r => r.end
 
 | 元件                            | 用途                                                                                          |
 | ------------------------------- | --------------------------------------------------------------------------------------------- |
-| `RecordFormModal`             | 底部 sheet，接收 `open/onClose/title/onSubmit/submitting/children`；body scroll lock 已內建 |
+| `RecordFormModal`             | 底部 sheet，接收 `open/onClose/title/onSubmit/submitting/children`；body scroll lock 已內建；pill handle 支援下拉關閉（onTouchStart/onTouchEnd，80px threshold，`touchAction: 'none'`） |
 | `DateNavigator`               | 日期前後切換，今天顯示「今天」，非今天顯示「回到今天」連結                                    |
 | `SegmentedControl`            | 多選一按鈕組（2–4 個選項）；超過 4 個選項改用 `<select>`                                   |
 | `TimeInput`                   | `datetime-local` 輸入，配合 `nowLocalString()` 預設現在時間                               |
